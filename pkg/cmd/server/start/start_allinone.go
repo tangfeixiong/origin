@@ -67,6 +67,7 @@ func NewCommandStartAllInOne(basename string, out io.Writer) (*cobra.Command, *A
 		Short: "Launch all-in-one server",
 		Long:  fmt.Sprintf(allInOneLong, basename),
 		Run: func(c *cobra.Command, args []string) {
+			glog.V(1).Infof("tangfx > invoke corbra run interface")
 			kcmdutil.CheckErr(options.Complete())
 			kcmdutil.CheckErr(options.Validate(args))
 
@@ -179,7 +180,7 @@ func (o AllInOneOptions) Validate(args []string) error {
 	if len(o.MasterOptions.MasterArgs.KubeConnectionArgs.ClientConfigLoadingRules.ExplicitPath) != 0 {
 		return errors.New("all-in-one cannot start with a remote Kubernetes server, start the master instead")
 	}
-
+	glog.V(7).Infof("tangfx > master args validation passed: %v", o)
 	return nil
 }
 
@@ -211,7 +212,7 @@ func (o *AllInOneOptions) Complete() error {
 			o.NodeArgs.ClusterDNS = ip
 		}
 	}
-
+	glog.V(7).Infoln("tangfx > system settings validation passed")
 	return nil
 }
 
@@ -231,19 +232,21 @@ func (o AllInOneOptions) StartAllInOne() error {
 		return nil
 	}
 	masterOptions := *o.MasterOptions
+	glog.V(7).Infof("tangfx > master options: %#v", masterOptions)
 	if err := masterOptions.RunMaster(); err != nil {
 		return err
 	}
-
+	glog.V(7).Infof("tangfx > node options: %#v", masterOptions)
 	nodeOptions := NodeOptions{o.NodeArgs, o.NodeConfigFile, o.MasterOptions.Output}
 	if err := nodeOptions.RunNode(); err != nil {
 		return err
 	}
 
 	if o.IsWriteConfigOnly() {
+		glog.V(7).Infof("tangfx > save cert and config into: %v", o.ConfigDir)
 		return nil
 	}
-
+	glog.V(7).Infof("tangfx > notify unix NOTIFY_SOCKET daemon: %#v", masterOptions)
 	daemon.SdNotify("READY=1")
 	select {}
 }

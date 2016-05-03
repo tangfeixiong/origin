@@ -180,7 +180,7 @@ func (o CreateMasterCertsOptions) CreateMasterCerts() error {
 		KeyFile:    DefaultKeyFilename(o.CertDir, CAFilePrefix),
 		SerialFile: DefaultSerialFilename(o.CertDir, CAFilePrefix),
 	}
-
+	glog.V(7).Infof("tangfx > signer cert options: %#v", getSignerCertOptions)
 	errs := parallel.Run(
 		func() error { return o.createCABundle(&getSignerCertOptions) },
 		func() error { return o.createServerCerts(&getSignerCertOptions) },

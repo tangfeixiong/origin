@@ -326,7 +326,7 @@ func (o MasterOptions) CreateCerts() error {
 	if err := mintAllCertsOptions.CreateMasterCerts(); err != nil {
 		return err
 	}
-
+	glog.V(1).Info("tangfx > MasterOptions) CreateCerts done")
 	return nil
 }
 

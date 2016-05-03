@@ -20,6 +20,7 @@ origin.iml
 *.pyc
 .tag*
 .project
+*.go
 *.go~
 tags
 .envrc
