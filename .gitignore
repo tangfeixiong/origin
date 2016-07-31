@@ -1,3 +1,12 @@
+Godeps/_workspace/
+PICC/
+apache-maven-3.3.9/
+apache-maven.rc
+#etc/
+fedora_virtualbox_inst.box
+go.rc
+go1.6.2.linux-amd64.tar.gz
+
 /_output
 /openshift.local.*
 /third-party

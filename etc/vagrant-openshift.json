@@ -1,0 +1,38 @@
+{
+    "dev_cluster"       :  false,
+    "dind_dev_cluster"  :  false,
+    "num_minions"       :  1,
+    "cpus"              :  2,
+    "memory"            :  5120,
+    "skip_build"        :  true,
+    "master_ip"         :  "172.17.4.50",
+    "minion_ip_base"    :  "172.17.4.",
+    "insert_key"        :  false,
+    "private_network_ip":  "172.17.4.50",
+
+    "virtualbox"        :
+        {
+            "box_name"  : "fedora_inst",
+            "box_url"   : "fedora_virtualbox_inst.box"
+        },
+
+    "sync_folders_type" :  null,
+    "sync_folders"      : 
+        {
+            ".":
+              {
+                "to"      : "/data/src/github.com/openshift/origin",
+                "exclude" : null
+              },
+            "/Users/fanhongling/Downloads/workspace/src/github.com":
+              {
+                "to"      : "/work/src/github.com",
+                "exclude" : null
+              },
+            "/Users/fanhongling/Downloads/workspace/src-openshift-dep":
+              {
+                "to"      : "/go/src",
+                "exclude" : null
+              }
+        }
+}
