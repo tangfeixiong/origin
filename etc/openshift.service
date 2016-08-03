@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenShift
+After=docker.service
+Requires=docker.service
+Documentation=https://github.com/openshift/origin
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/sysconfig/openshift
+ExecStart=/data/src/github.com/openshift/origin/_output/local/bin/linux/amd64/openshift start --cors-allowed-origins=.* --public-master=https://localhost:8443
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
