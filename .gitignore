@@ -6,6 +6,7 @@ apache-maven.rc
 fedora_virtualbox_inst.box
 go.rc
 go1.6.2.linux-amd64.tar.gz
+server923_generic.jar
 
 /_output
 /openshift.local.*
