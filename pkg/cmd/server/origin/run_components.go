@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang/glog"
 
+	deployclient "github.com/openshift/origin/pkg/deploy/client/clientset_generated/internalclientset/typed/core/unversioned"
 	kctrlmgr "k8s.io/kubernetes/cmd/kube-controller-manager/app"
 	cmapp "k8s.io/kubernetes/cmd/kube-controller-manager/app/options"
 	"k8s.io/kubernetes/pkg/admission"
@@ -30,29 +31,33 @@ import (
 	buildclient "github.com/openshift/origin/pkg/build/client"
 	buildcontrollerfactory "github.com/openshift/origin/pkg/build/controller/factory"
 	buildstrategy "github.com/openshift/origin/pkg/build/controller/strategy"
+	osclient "github.com/openshift/origin/pkg/client"
+	oscache "github.com/openshift/origin/pkg/client/cache"
+	cmdadmission "github.com/openshift/origin/pkg/cmd/server/admission"
+	configapi "github.com/openshift/origin/pkg/cmd/server/api"
+	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
 	"github.com/openshift/origin/pkg/cmd/server/crypto"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	"github.com/openshift/origin/pkg/controller/shared"
 	deploycontroller "github.com/openshift/origin/pkg/deploy/controller/deployment"
 	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/controller/deploymentconfig"
 	triggercontroller "github.com/openshift/origin/pkg/deploy/controller/generictrigger"
-	imagechangecontroller "github.com/openshift/origin/pkg/deploy/controller/imagechange"
 	"github.com/openshift/origin/pkg/dns"
 	imagecontroller "github.com/openshift/origin/pkg/image/controller"
 	projectcontroller "github.com/openshift/origin/pkg/project/controller"
-	securitycontroller "github.com/openshift/origin/pkg/security/controller"
-	"github.com/openshift/origin/pkg/security/mcs"
-	"github.com/openshift/origin/pkg/security/uid"
-	"github.com/openshift/origin/pkg/security/uidallocator"
-	servingcertcontroller "github.com/openshift/origin/pkg/service/controller/servingcert"
-
-	configapi "github.com/openshift/origin/pkg/cmd/server/api"
-	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
 	quota "github.com/openshift/origin/pkg/quota"
 	quotacontroller "github.com/openshift/origin/pkg/quota/controller"
 	"github.com/openshift/origin/pkg/quota/controller/clusterquotareconciliation"
 	sdnplugin "github.com/openshift/origin/pkg/sdn/plugin"
+	securitycontroller "github.com/openshift/origin/pkg/security/controller"
+	"github.com/openshift/origin/pkg/security/mcs"
+	"github.com/openshift/origin/pkg/security/uid"
+	"github.com/openshift/origin/pkg/security/uidallocator"
+	"github.com/openshift/origin/pkg/service/controller/ingressip"
+	servingcertcontroller "github.com/openshift/origin/pkg/service/controller/servingcert"
 	serviceaccountcontrollers "github.com/openshift/origin/pkg/serviceaccounts/controllers"
+	unidlingcontroller "github.com/openshift/origin/pkg/unidling/controller"
 )
 
 const (
@@ -61,6 +66,8 @@ const (
 
 	// from CMServer MinResyncPeriod
 	defaultReplenishmentSyncPeriod time.Duration = 12 * time.Hour
+
+	defaultIngressIPSyncPeriod time.Duration = 10 * time.Minute
 )
 
 // RunProjectAuthorizationCache starts the project authorization cache
@@ -222,7 +229,7 @@ func (c *MasterConfig) RunProjectCache() {
 }
 
 // RunBuildController starts the build sync loop for builds and buildConfig processing.
-func (c *MasterConfig) RunBuildController() {
+func (c *MasterConfig) RunBuildController(informers shared.InformerFactory) {
 	// initialize build controller
 	dockerImage := c.ImageFor("docker-builder")
 	stiImage := c.ImageFor("sti-builder")
@@ -231,7 +238,10 @@ func (c *MasterConfig) RunBuildController() {
 	groupVersion := unversioned.GroupVersion{Group: "", Version: storageVersion}
 	codec := kapi.Codecs.LegacyCodec(groupVersion)
 
-	admissionControl := admission.NewFromPlugins(clientadapter.FromUnversionedClient(c.PrivilegedLoopbackKubernetesClient), []string{"SecurityContextConstraint"}, "")
+	admissionControl := admission.InitPlugin("SecurityContextConstraint", clientadapter.FromUnversionedClient(c.PrivilegedLoopbackKubernetesClient), "")
+	if wantsInformers, ok := admissionControl.(cmdadmission.WantsInformers); ok {
+		wantsInformers.SetInformers(informers)
+	}
 
 	osclient, kclient := c.BuildControllerClients()
 	factory := buildcontrollerfactory.BuildControllerFactory{
@@ -280,8 +290,12 @@ func (c *MasterConfig) RunBuildPodController() {
 func (c *MasterConfig) RunBuildImageChangeTriggerController() {
 	bcClient, _ := c.BuildImageChangeTriggerControllerClients()
 	bcInstantiator := buildclient.NewOSClientBuildConfigInstantiatorClient(bcClient)
-	factory := buildcontrollerfactory.ImageChangeControllerFactory{Client: bcClient, BuildConfigInstantiator: bcInstantiator}
-	factory.Create().Run()
+	bcIndex := &oscache.StoreToBuildConfigListerImpl{c.Informers.BuildConfigs().Indexer()}
+	bcIndexSynced := c.Informers.BuildConfigs().Informer().HasSynced
+	factory := buildcontrollerfactory.ImageChangeControllerFactory{Client: bcClient, BuildConfigInstantiator: bcInstantiator, BuildConfigIndex: bcIndex, BuildConfigIndexSynced: bcIndexSynced}
+	go func() {
+		factory.Create().Run()
+	}()
 }
 
 // RunBuildConfigChangeController starts the build config change trigger controller process.
@@ -321,13 +335,9 @@ func (c *MasterConfig) RunDeploymentController() {
 		bootstrappolicy.DeployerServiceAccountName,
 		c.ImageFor("deployer"),
 		env,
-		c.EtcdHelper.Codec(),
+		c.ExternalVersionCodec,
 	)
-
-	// TODO: Make the stop channel actually work.
-	stopCh := make(chan struct{})
-	// TODO: Make the number of workers configurable.
-	go controller.Run(5, stopCh)
+	go controller.Run(5, utilwait.NeverStop)
 }
 
 // RunDeploymentConfigController starts the deployment config controller process.
@@ -337,32 +347,18 @@ func (c *MasterConfig) RunDeploymentConfigController() {
 	podInformer := c.Informers.Pods().Informer()
 	osclient, kclient := c.DeploymentConfigControllerClients()
 
-	controller := deployconfigcontroller.NewDeploymentConfigController(dcInfomer, rcInformer, podInformer, osclient, kclient, c.EtcdHelper.Codec())
-	// TODO: Make the stop channel actually work.
-	stopCh := make(chan struct{})
-	// TODO: Make the number of workers configurable.
-	go controller.Run(5, stopCh)
+	controller := deployconfigcontroller.NewDeploymentConfigController(dcInfomer, rcInformer, podInformer, osclient, kclient, c.ExternalVersionCodec)
+	go controller.Run(5, utilwait.NeverStop)
 }
 
 // RunDeploymentTriggerController starts the deployment trigger controller process.
 func (c *MasterConfig) RunDeploymentTriggerController() {
 	dcInfomer := c.Informers.DeploymentConfigs().Informer()
 	streamInformer := c.Informers.ImageStreams().Informer()
-	osclient, kclient := c.DeploymentTriggerControllerClients()
+	osclient := c.DeploymentTriggerControllerClient()
 
-	controller := triggercontroller.NewDeploymentTriggerController(dcInfomer, streamInformer, osclient, kclient, c.EtcdHelper.Codec())
-	// TODO: Make the stop channel actually work.
-	stopCh := make(chan struct{})
-	// TODO: Make the number of workers configurable.
-	go controller.Run(5, stopCh)
-}
-
-// RunDeploymentImageChangeTriggerController starts the image change trigger controller process.
-func (c *MasterConfig) RunDeploymentImageChangeTriggerController() {
-	osclient := c.DeploymentImageChangeTriggerControllerClient()
-	factory := imagechangecontroller.ImageChangeControllerFactory{Client: osclient}
-	controller := factory.Create()
-	controller.Run()
+	controller := triggercontroller.NewDeploymentTriggerController(dcInfomer, streamInformer, osclient, c.ExternalVersionCodec)
+	go controller.Run(5, utilwait.NeverStop)
 }
 
 // RunSDNController runs openshift-sdn if the said network plugin is provided
@@ -417,14 +413,19 @@ func (c *MasterConfig) RunSecurityAllocationController() {
 
 	// TODO: move range initialization to run_config
 	uidRange, err := uid.ParseRange(alloc.UIDAllocatorRange)
-
 	if err != nil {
 		glog.Fatalf("Unable to describe UID range: %v", err)
 	}
+
+	opts, err := c.RESTOptionsGetter.GetRESTOptions(unversioned.GroupResource{Resource: "securityuidranges"})
+	if err != nil {
+		glog.Fatalf("Unable to load storage options for security UID ranges")
+	}
+
 	var etcdAlloc *etcdallocator.Etcd
 	uidAllocator := uidallocator.New(uidRange, func(max int, rangeSpec string) allocator.Interface {
 		mem := allocator.NewContiguousAllocationMap(max, rangeSpec)
-		etcdAlloc = etcdallocator.NewEtcd(mem, "/ranges/uids", kapi.Resource("uidallocation"), c.EtcdHelper)
+		etcdAlloc = etcdallocator.NewEtcd(mem, "/ranges/uids", kapi.Resource("uidallocation"), opts.StorageConfig)
 		return etcdAlloc
 	})
 	mcsRange, err := mcs.ParseRange(alloc.MCSAllocatorRange)
@@ -515,4 +516,34 @@ func (c *MasterConfig) RunClusterQuotaReconciliationController() {
 	controller := clusterquotareconciliation.NewClusterQuotaReconcilationController(options)
 	c.ClusterQuotaMappingController.GetClusterQuotaMapper().AddListener(controller)
 	go controller.Run(5, utilwait.NeverStop)
+}
+
+// RunIngressIPController starts the ingress ip controller if IngressIPNetworkCIDR is configured.
+func (c *MasterConfig) RunIngressIPController(client *kclient.Client) {
+	if len(c.Options.NetworkConfig.IngressIPNetworkCIDR) == 0 {
+		return
+	}
+
+	_, ipNet, err := net.ParseCIDR(c.Options.NetworkConfig.IngressIPNetworkCIDR)
+	if err != nil {
+		// should have been caught with validation
+		glog.Fatalf("Unable to start ingress ip controller: %v", err)
+	}
+	if ipNet.IP.IsUnspecified() {
+		return
+	}
+	ingressIPController := ingressip.NewIngressIPController(client, ipNet, defaultIngressIPSyncPeriod)
+	go ingressIPController.Run(utilwait.NeverStop)
+}
+
+// RunUnidlingController starts the unidling controller
+func (c *MasterConfig) RunUnidlingController() {
+	oc, kc := c.UnidlingControllerClients()
+	resyncPeriod := 2 * time.Hour
+	scaleNamespacer := osclient.NewDelegatingScaleNamespacer(oc, kc)
+	coreClient := clientadapter.FromUnversionedClient(kc).Core()
+	dcCoreClient := deployclient.New(oc.RESTClient)
+	cont := unidlingcontroller.NewUnidlingController(scaleNamespacer, coreClient, coreClient, dcCoreClient, coreClient, resyncPeriod)
+
+	cont.Run(utilwait.NeverStop)
 }

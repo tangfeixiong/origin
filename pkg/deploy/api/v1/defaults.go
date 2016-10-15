@@ -84,16 +84,12 @@ func SetDefaults_RollingDeploymentStrategyParams(obj *RollingDeploymentStrategyP
 		obj.TimeoutSeconds = mkintp(deployapi.DefaultRollingTimeoutSeconds)
 	}
 
-	if obj.UpdatePercent == nil {
-		// Apply defaults.
-		if obj.MaxUnavailable == nil {
-			maxUnavailable := intstr.FromString("25%")
-			obj.MaxUnavailable = &maxUnavailable
-		}
-		if obj.MaxSurge == nil {
-			maxSurge := intstr.FromString("25%")
-			obj.MaxSurge = &maxSurge
-		}
+	if obj.MaxUnavailable == nil && obj.MaxSurge == nil {
+		maxUnavailable := intstr.FromString("25%")
+		obj.MaxUnavailable = &maxUnavailable
+
+		maxSurge := intstr.FromString("25%")
+		obj.MaxSurge = &maxSurge
 	}
 }
 
@@ -114,15 +110,12 @@ func mkintp(i int64) *int64 {
 	return &i
 }
 
-func addDefaultingFuncs(scheme *runtime.Scheme) {
-	err := scheme.AddDefaultingFuncs(
+func addDefaultingFuncs(scheme *runtime.Scheme) error {
+	return scheme.AddDefaultingFuncs(
 		SetDefaults_DeploymentConfigSpec,
 		SetDefaults_DeploymentStrategy,
 		SetDefaults_RecreateDeploymentStrategyParams,
 		SetDefaults_RollingDeploymentStrategyParams,
 		SetDefaults_DeploymentConfig,
 	)
-	if err != nil {
-		panic(err)
-	}
 }

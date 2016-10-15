@@ -1,12 +1,5 @@
 #!/bin/bash
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/lib/init.sh"
-os::log::stacktrace::install
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 trap os::test::junit::reconcile_output EXIT
 
 # Cleanup cluster resources created by this test
@@ -44,6 +37,7 @@ os::cmd::expect_failure_and_text "oc extract secret/dockercfg secret/dockercfg -
 os::cmd::expect_success_and_text "oc extract secret/dockercfg secret/dockercfg --to '${workingdir}' --confirm" '.dockercfg'
 os::cmd::expect_success_and_text "oc extract secret/dockercfg --to '${workingdir}' --confirm" '.dockercfg'
 os::cmd::expect_success "oc extract secret/dockercfg --to '${workingdir}' --confirm | xargs rm"
+os::cmd::expect_failure_and_text "oc extract secret/dockercfg --to missing-dir" "stat missing-dir: no such file or directory"
 
 # attach secrets to service account
 # single secret with prefix

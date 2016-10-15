@@ -68,16 +68,18 @@ Output shell completion code for the given shell (bash or zsh)
   oadm completion bash > bash_completion.sh
   source bash_completion.sh
 
-  # The above example depends on the bash-completion
-framework. It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
+  # The above example depends on the bash-completion framework.
+  It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
 
   brew install bash-completion
   source $(brew --prefix)/etc/bash_completion
   oadm completion bash > bash_completion.sh
   source bash_completion.sh
 
-  # In zsh, the following will load openshift cli zsh completion:
+  # In zsh*, the following will load openshift cli zsh completion:
   source <(oadm completion zsh)
+
+  * zsh completions are only supported in versions of zsh >= 5.2
 ----
 ====
 
@@ -105,8 +107,25 @@ Displays the current-context
 
 [options="nowrap"]
 ----
+  
   # Display the current-context
   oadm config current-context
+----
+====
+
+
+== oadm config get-contexts
+Describe one or many contexts
+
+====
+
+[options="nowrap"]
+----
+  # List all the contexts in your kubeconfig file
+  oadm config get-contexts
+  
+  # Describe one context in your kubeconfig file.
+  oadm config get-contexts my-context
 ----
 ====
 
@@ -118,6 +137,7 @@ Sets a cluster entry in kubeconfig
 
 [options="nowrap"]
 ----
+  
   # Set only the server field on the e2e cluster entry without touching other values.
   oadm config set-cluster e2e --server=https://1.2.3.4
   
@@ -137,6 +157,7 @@ Sets a context entry in kubeconfig
 
 [options="nowrap"]
 ----
+  
   # Set the user field on the gce context entry without touching other values
   oadm config set-context gce --user=cluster-admin
 ----
@@ -150,6 +171,7 @@ Sets a user entry in kubeconfig
 
 [options="nowrap"]
 ----
+  
   # Set only the "client-key" field on the "cluster-admin"
   # entry, without touching other values:
   oadm config set-credentials cluster-admin --client-key=~/.kube/admin.key
@@ -159,17 +181,27 @@ Sets a user entry in kubeconfig
   
   # Embed client certificate data in the "cluster-admin" entry
   oadm config set-credentials cluster-admin --client-certificate=~/.kube/admin.crt --embed-certs=true
+  
+  # Enable the Google Compute Platform auth provider for the "cluster-admin" entry
+  oadm config set-credentials cluster-admin --auth-provider=gcp
+  
+  # Enable the OpenID Connect auth provider for the "cluster-admin" entry with additional args
+  oadm config set-credentials cluster-admin --auth-provider=oidc --auth-provider-arg=client-id=foo --auth-provider-arg=client-secret=bar
+  
+  # Remove the "client-secret" config value for the OpenID Connect auth provider for the "cluster-admin" entry
+  oadm config set-credentials cluster-admin --auth-provider=oidc --auth-provider-arg=client-secret-
 ----
 ====
 
 
 == oadm config view
-Displays merged kubeconfig settings or a specified kubeconfig file.
+Display merged kubeconfig settings or a specified kubeconfig file
 
 ====
 
 [options="nowrap"]
 ----
+  
   # Show Merged kubeconfig settings.
   oadm config view
   
@@ -186,6 +218,7 @@ Mark node as unschedulable
 
 [options="nowrap"]
 ----
+
 # Mark node "foo" as unschedulable.
 oadm cordon foo
 
@@ -200,6 +233,7 @@ Drain node in preparation for maintenance
 
 [options="nowrap"]
 ----
+
 # Drain node "foo", even if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet on it.
 $ oadm drain foo --force
 
@@ -235,6 +269,9 @@ Create a new group
 
   # Add a group with two users
   oadm groups new my-group user1 user2
+
+  # Add a group with one user and shorter output
+  oadm groups new my-group user1 -o name
 ----
 ====
 
@@ -344,6 +381,12 @@ Manage nodes - list pods, evacuate, or mark ready
 	# Migrate selected pods
 	oadm manage-node <mynode> --evacuate --pod-selector="<service=myapp>"
 
+	# Migrate selected pods, use a grace period of 60 seconds
+	oadm manage-node <mynode> --evacuate --grace-period=60 --pod-selector="<service=myapp>"
+
+	# Migrate selected pods not backed by replication controller
+	oadm manage-node <mynode> --evacuate --force --pod-selector="<service=myapp>"
+
 	# Show pods that will be migrated
 	oadm manage-node <mynode> --evacuate --dry-run --pod-selector="<service=myapp>"
 
@@ -401,6 +444,22 @@ Update the stored version of API objects
 ====
 
 
+== oadm pod-network isolate-projects
+Isolate project network
+
+====
+
+[options="nowrap"]
+----
+	# Provide isolation for project p1
+	oadm pod-network isolate-projects <p1>
+
+	# Allow all projects with label name=top-secret to have their own isolated project network
+	oadm pod-network isolate-projects --selector='name=top-secret'
+----
+====
+
+
 == oadm pod-network join-projects
 Join project network
 
@@ -434,16 +493,16 @@ Make project network global
 
 
 == oadm policy add-role-to-user
-Add users or serviceaccounts to a role in the current project
+Add a role to users or serviceaccounts for the current project
 
 ====
 
 [options="nowrap"]
 ----
-  # Add the 'view' role to user1 in the current project
+  # Add the 'view' role to user1 for the current project
   oadm policy add-role-to-user view user1
 
-  # Add the 'edit' role to serviceaccount1 in the current project
+  # Add the 'edit' role to serviceaccount1 for the current project
   oadm policy add-role-to-user edit -z serviceaccount1
 ----
 ====
@@ -671,11 +730,82 @@ Update the taints on one or more nodes
 
 [options="nowrap"]
 ----
+
 # Update node 'foo' with a taint with key 'dedicated' and value 'special-user' and effect 'NoSchedule'.
-# If a taint with that key already exists, its value and effect are replaced as specified.
+# If a taint with that key and effect already exists, its value is replaced as specified.
 oadm taint nodes foo dedicated=special-user:NoSchedule
-# Remove from node 'foo' the taint with key 'dedicated' if one exists.
+
+# Remove from node 'foo' the taint with key 'dedicated' and effect 'NoSchedule' if one exists.
+oadm taint nodes foo dedicated:NoSchedule-
+
+# Remove from node 'foo' all the taints with key 'dedicated'
 oadm taint nodes foo dedicated-
+----
+====
+
+
+== oadm top images
+Show usage statistics for Images
+
+====
+
+[options="nowrap"]
+----
+  # Show usage statistics for Images
+  oadm top images
+----
+====
+
+
+== oadm top imagestreams
+Show usage statistics for ImageStreams
+
+====
+
+[options="nowrap"]
+----
+  # Show usage statistics for ImageStreams
+  oadm top imagestreams
+----
+====
+
+
+== oadm top node
+Display Resource (CPU/Memory/Storage) usage of nodes
+
+====
+
+[options="nowrap"]
+----
+
+# Show metrics for all nodes
+kubectl top node
+
+# Show metrics for a given node
+kubectl top node NODE_NAME
+----
+====
+
+
+== oadm top pod
+Display Resource (CPU/Memory/Storage) usage of pods
+
+====
+
+[options="nowrap"]
+----
+
+# Show metrics for all pods in the default namespace
+kubectl top pod
+
+# Show metrics for all pods in the given namespace
+kubectl top pod --namespace=NAMESPACE
+
+# Show metrics for a given pod and its containers
+kubectl top pod POD_NAME --containers
+
+# Show metrics for the pods defined by label name=myLabel
+kubectl top pod -l name=myLabel
 ----
 ====
 
@@ -687,6 +817,7 @@ Mark node as schedulable
 
 [options="nowrap"]
 ----
+
 # Mark node "foo" as schedulable.
 $ oadm uncordon foo
 

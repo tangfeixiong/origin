@@ -6,10 +6,9 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/util/uuid"
 
-	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
@@ -98,14 +97,6 @@ func NewCmdPolicy(name, fullName string, f *clientcmd.Factory, out, errout io.Wr
 	return cmds
 }
 
-func getFlagString(cmd *cobra.Command, flag string) string {
-	f := cmd.Flags().Lookup(flag)
-	if f == nil {
-		glog.Fatalf("Flag accessed but not defined for command %s: %s", cmd.Name(), flag)
-	}
-	return f.Value.String()
-}
-
 func getUniqueName(basename string, existingNames *sets.String) string {
 	if !existingNames.Has(basename) {
 		return basename
@@ -118,7 +109,7 @@ func getUniqueName(basename string, existingNames *sets.String) string {
 		}
 	}
 
-	return string(util.NewUUID())
+	return string(uuid.NewUUID())
 }
 
 // RoleBindingAccessor is used by role modification commands to access and modify roles

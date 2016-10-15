@@ -11,6 +11,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/runtime/serializer"
 	"k8s.io/kubernetes/pkg/types"
@@ -19,6 +20,7 @@ import (
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	configapiv1 "github.com/openshift/origin/pkg/cmd/server/api/v1"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	imagepolicyapi "github.com/openshift/origin/pkg/image/admission/imagepolicy/api"
 	podnodeapi "github.com/openshift/origin/pkg/scheduler/admission/podnodeconstraints/api"
 
 	// install all APIs
@@ -52,11 +54,15 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 
 			if obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides == nil {
 				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides = &configapi.ClientConnectionOverrides{
-					QPS:                2.0,
-					Burst:              2,
 					AcceptContentTypes: "test/second",
 					ContentType:        "test/first",
 				}
+			}
+			if obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.QPS <= 0 {
+				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.QPS = 2.0
+			}
+			if obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.Burst <= 0 {
+				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.Burst = 2
 			}
 			if len(obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.AcceptContentTypes) == 0 {
 				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.AcceptContentTypes = "test/fourth"
@@ -66,11 +72,15 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 			}
 			if obj.MasterClients.ExternalKubernetesClientConnectionOverrides == nil {
 				obj.MasterClients.ExternalKubernetesClientConnectionOverrides = &configapi.ClientConnectionOverrides{
-					QPS:                1.0,
-					Burst:              1,
 					AcceptContentTypes: "test/other",
 					ContentType:        "test/third",
 				}
+			}
+			if obj.MasterClients.ExternalKubernetesClientConnectionOverrides.QPS <= 0 {
+				obj.MasterClients.ExternalKubernetesClientConnectionOverrides.QPS = 2.0
+			}
+			if obj.MasterClients.ExternalKubernetesClientConnectionOverrides.Burst <= 0 {
+				obj.MasterClients.ExternalKubernetesClientConnectionOverrides.Burst = 2
 			}
 			if len(obj.MasterClients.ExternalKubernetesClientConnectionOverrides.AcceptContentTypes) == 0 {
 				obj.MasterClients.ExternalKubernetesClientConnectionOverrides.AcceptContentTypes = "test/fourth"
@@ -87,6 +97,16 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 				} else {
 					// default ServiceClusterIPRange used by kubernetes if nothing is specified
 					obj.NetworkConfig.ServiceNetworkCIDR = "10.0.0.0/24"
+				}
+			}
+
+			// TODO stop duplicating the conversion in the test.
+			kubeConfig := obj.KubernetesMasterConfig
+			noCloudProvider := kubeConfig != nil && (len(kubeConfig.ControllerArguments["cloud-provider"]) == 0 || kubeConfig.ControllerArguments["cloud-provider"][0] == "")
+			if noCloudProvider && len(obj.NetworkConfig.IngressIPNetworkCIDR) == 0 {
+				cidr := "172.46.0.0/16"
+				if !(configapi.CIDRsOverlap(cidr, obj.NetworkConfig.ClusterNetworkCIDR) || configapi.CIDRsOverlap(cidr, obj.NetworkConfig.ServiceNetworkCIDR)) {
+					obj.NetworkConfig.IngressIPNetworkCIDR = cidr
 				}
 			}
 
@@ -145,9 +165,9 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 		},
 		func(obj *configapi.JenkinsPipelineConfig, c fuzz.Continue) {
 			c.FuzzNoCustom(obj)
-			if obj.Enabled == nil {
+			if obj.AutoProvisionEnabled == nil {
 				v := c.RandBool()
-				obj.Enabled = &v
+				obj.AutoProvisionEnabled = &v
 			}
 			if len(obj.TemplateNamespace) == 0 {
 				obj.TemplateNamespace = "value"
@@ -278,6 +298,20 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 			c.FuzzNoCustom(obj)
 			if obj.NodeSelectorLabelBlacklist == nil {
 				obj.NodeSelectorLabelBlacklist = []string{"kubernetes.io/hostname"}
+			}
+		},
+		func(obj *labels.Selector, c fuzz.Continue) {
+		},
+		func(obj *imagepolicyapi.ImagePolicyConfig, c fuzz.Continue) {
+			c.FuzzNoCustom(obj)
+			for i := range obj.ExecutionRules {
+				if len(obj.ExecutionRules[i].OnResources) == 0 {
+					obj.ExecutionRules[i].OnResources = []unversioned.GroupResource{{Resource: "pods"}}
+				}
+				obj.ExecutionRules[i].MatchImageLabelSelectors = nil
+			}
+			if len(obj.ResolveImages) == 0 {
+				obj.ResolveImages = imagepolicyapi.Attempt
 			}
 		},
 		func(obj *configapi.GrantConfig, c fuzz.Continue) {

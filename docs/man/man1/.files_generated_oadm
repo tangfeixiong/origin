@@ -8,6 +8,10 @@ oadm-ca-encrypt.1
 oadm-ca.1
 oadm-completion.1
 oadm-config-current-context.1
+oadm-config-delete-cluster.1
+oadm-config-delete-context.1
+oadm-config-get-clusters.1
+oadm-config-get-contexts.1
 oadm-config-set-cluster.1
 oadm-config-set-context.1
 oadm-config-set-credentials.1
@@ -45,6 +49,7 @@ oadm-migrate.1
 oadm-new-project.1
 oadm-options.1
 oadm-overwrite-policy.1
+oadm-pod-network-isolate-projects.1
 oadm-pod-network-join-projects.1
 oadm-pod-network-make-projects-global.1
 oadm-pod-network.1
@@ -75,6 +80,11 @@ oadm-prune.1
 oadm-registry.1
 oadm-router.1
 oadm-taint.1
+oadm-top-images.1
+oadm-top-imagestreams.1
+oadm-top-node.1
+oadm-top-pod.1
+oadm-top.1
 oadm-uncordon.1
 oadm-version.1
 oadm.1

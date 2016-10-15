@@ -13,10 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-set -o errexit
-set -o nounset
-set -o pipefail
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 #### HACK ####
 # Sometimes godep just can't handle things. This lets use manually put
@@ -59,8 +56,6 @@ pin-godep() {
   popd > /dev/null
 }
 
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-
 # build the godep tool
 # Again go get stinks, hence || true
 go get -u github.com/tools/godep 2>/dev/null || true
@@ -77,6 +72,8 @@ preload-remote "github.com/skynetservices" "skydns" "github.com/openshift" "skyd
 preload-remote "github.com/coreos" "etcd" "github.com/openshift" "etcd"
 preload-remote "github.com/emicklei" "go-restful" "github.com/openshift" "go-restful"
 preload-remote "github.com/golang" "glog" "github.com/openshift" "glog"
+preload-remote "github.com/cloudflare" "cfssl" "github.com/openshift" "cfssl"
+preload-remote "github.com/google" "certificate-transparency" "github.com/openshift" "certificate-transparency"
 preload-remote "github.com/RangelReale" "osin" "github.com/openshift" "osin"
 preload-remote "github.com/google" "cadvisor" "github.com/openshift" "cadvisor"
 

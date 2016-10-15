@@ -13,18 +13,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	"k8s.io/kubernetes/pkg/fields"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/third_party/forked/golang/netutil"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	osclient "github.com/openshift/origin/pkg/client"
@@ -83,7 +84,7 @@ func NewCmdStartBuild(fullName string, f *clientcmd.Factory, in io.Reader, out i
 		Example:    fmt.Sprintf(startBuildExample, fullName),
 		SuggestFor: []string{"build", "builds"},
 		Run: func(cmd *cobra.Command, args []string) {
-			kcmdutil.CheckErr(o.Complete(f, in, out, cmd, args))
+			kcmdutil.CheckErr(o.Complete(f, in, out, cmd, fullName, args))
 			kcmdutil.CheckErr(o.Run())
 		},
 	}
@@ -105,7 +106,7 @@ func NewCmdStartBuild(fullName string, f *clientcmd.Factory, in io.Reader, out i
 	cmd.Flags().StringVar(&o.GitPostReceive, "git-post-receive", o.GitPostReceive, "The contents of the post-receive hook to trigger a build")
 	cmd.Flags().StringVar(&o.GitRepository, "git-repository", o.GitRepository, "The path to the git repository for post-receive; defaults to the current directory")
 
-	// cmdutil.AddOutputFlagsForMutation(cmd)
+	kcmdutil.AddOutputFlagsForMutation(cmd)
 	return cmd
 }
 
@@ -132,21 +133,24 @@ type StartBuildOptions struct {
 	GitRepository  string
 	GitPostReceive string
 
+	Mapper       meta.RESTMapper
 	Client       osclient.Interface
 	ClientConfig kclientcmd.ClientConfig
 
-	AsBinary  bool
-	EnvVar    []kapi.EnvVar
-	Name      string
-	Namespace string
+	AsBinary    bool
+	ShortOutput bool
+	EnvVar      []kapi.EnvVar
+	Name        string
+	Namespace   string
 }
 
-func (o *StartBuildOptions) Complete(f *clientcmd.Factory, in io.Reader, out io.Writer, cmd *cobra.Command, args []string) error {
+func (o *StartBuildOptions) Complete(f *clientcmd.Factory, in io.Reader, out io.Writer, cmd *cobra.Command, cmdFullName string, args []string) error {
 	o.In = in
 	o.Out = out
-	o.ErrOut = cmd.Out()
+	o.ErrOut = cmd.OutOrStderr()
 	o.Git = git.NewRepository()
 	o.ClientConfig = f.OpenShiftClientConfig
+	o.Mapper, _ = f.Object(false)
 
 	webhook := o.FromWebhook
 	buildName := o.FromBuild
@@ -154,6 +158,12 @@ func (o *StartBuildOptions) Complete(f *clientcmd.Factory, in io.Reader, out io.
 	fromDir := o.FromDir
 	fromRepo := o.FromRepo
 	buildLogLevel := o.LogLevel
+
+	outputFormat := kcmdutil.GetFlagString(cmd, "output")
+	if outputFormat != "name" && outputFormat != "" {
+		return kcmdutil.UsageError(cmd, "Unsupported output format: %s", outputFormat)
+	}
+	o.ShortOutput = outputFormat == "name"
 
 	switch {
 	case len(webhook) > 0:
@@ -163,7 +173,7 @@ func (o *StartBuildOptions) Complete(f *clientcmd.Factory, in io.Reader, out io.
 		return nil
 
 	case len(args) != 1 && len(buildName) == 0:
-		return kcmdutil.UsageError(cmd, "Must pass a name of a build config or specify build name with '--from-build' flag")
+		return kcmdutil.UsageError(cmd, "Must pass a name of a build config or specify build name with '--from-build' flag.\nUse \"%s get bc\" to list all available build configs.", cmdFullName)
 	}
 
 	if len(buildName) != 0 && (len(fromFile) != 0 || len(fromDir) != 0 || len(fromRepo) != 0) {
@@ -249,6 +259,7 @@ func (o *StartBuildOptions) Run() error {
 	if len(o.ListWebhooks) > 0 {
 		return o.RunListBuildWebHooks()
 	}
+
 	buildRequestCauses := []buildapi.BuildTriggerCause{}
 	request := &buildapi.BuildRequest{
 		TriggeredBy: append(buildRequestCauses,
@@ -302,61 +313,38 @@ func (o *StartBuildOptions) Run() error {
 		}
 	}
 
-	// TODO: support -o on this command
-	fmt.Fprintln(o.Out, newBuild.Name)
-
-	var (
-		wg      sync.WaitGroup
-		exitErr error
-	)
-
-	// Wait for the build to complete
-	if o.WaitForComplete {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			exitErr = WaitForBuildComplete(o.Client.Builds(o.Namespace), newBuild.Name)
-		}()
-	}
+	kcmdutil.PrintSuccess(o.Mapper, o.ShortOutput, o.Out, "build", newBuild.Name, "started")
 
 	// Stream the logs from the build
 	if o.Follow {
-		wg.Add(1)
-		go func() {
-			// if --wait option is set, then don't wait for logs to finish streaming
-			// but wait for the build to reach its final state
-			if o.WaitForComplete {
-				wg.Done()
-			} else {
-				defer wg.Done()
-			}
-			opts := buildapi.BuildLogOptions{
-				Follow: true,
-				NoWait: false,
-			}
-			for {
-				rd, err := o.Client.BuildLogs(o.Namespace).Get(newBuild.Name, opts).Stream()
-				if err != nil {
-					// if --wait options is set, then retry the connection to build logs
-					// when we hit the timeout.
-					if o.WaitForComplete && oerrors.IsTimeoutErr(err) {
-						continue
-					}
-					fmt.Fprintf(o.ErrOut, "error getting logs: %v\n", err)
-					return
+		opts := buildapi.BuildLogOptions{
+			Follow: true,
+			NoWait: false,
+		}
+		for {
+			rd, err := o.Client.BuildLogs(o.Namespace).Get(newBuild.Name, opts).Stream()
+			if err != nil {
+				// retry the connection to build logs when we hit the timeout.
+				if oerrors.IsTimeoutErr(err) {
+					fmt.Fprintf(o.ErrOut, "timed out getting logs, retrying\n")
+					continue
 				}
-				defer rd.Close()
-				if _, err = io.Copy(o.Out, rd); err != nil {
-					fmt.Fprintf(o.ErrOut, "error streaming logs: %v\n", err)
-				}
+				fmt.Fprintf(o.ErrOut, "error getting logs (%v), waiting for build to complete\n", err)
 				break
 			}
-		}()
+			defer rd.Close()
+			if _, err = io.Copy(o.Out, rd); err != nil {
+				fmt.Fprintf(o.ErrOut, "error streaming logs (%v), waiting for build to complete\n", err)
+			}
+			break
+		}
 	}
 
-	wg.Wait()
+	if o.Follow || o.WaitForComplete {
+		return WaitForBuildComplete(o.Client.Builds(o.Namespace), newBuild.Name)
+	}
 
-	return exitErr
+	return nil
 }
 
 // RunListBuildWebHooks prints the webhooks for the provided build config.
@@ -407,7 +395,7 @@ func (o *StartBuildOptions) RunListBuildWebHooks() error {
 	return nil
 }
 
-func streamPathToBuild(git git.Repository, in io.Reader, out io.Writer, client osclient.BuildConfigInterface, fromDir, fromFile, fromRepo string, options *buildapi.BinaryBuildRequestOptions) (*buildapi.Build, error) {
+func streamPathToBuild(repo git.Repository, in io.Reader, out io.Writer, client osclient.BuildConfigInterface, fromDir, fromFile, fromRepo string, options *buildapi.BinaryBuildRequestOptions) (*buildapi.Build, error) {
 	count := 0
 	asDir, asFile, asRepo := len(fromDir) > 0, len(fromFile) > 0, len(fromRepo) > 0
 	if asDir {
@@ -421,6 +409,10 @@ func streamPathToBuild(git git.Repository, in io.Reader, out io.Writer, client o
 	}
 	if count > 1 {
 		return nil, fmt.Errorf("only one of --from-file, --from-repo, or --from-dir may be specified")
+	}
+
+	if asRepo && !git.IsGitInstalled() {
+		return nil, fmt.Errorf("cannot find git. Git is required to start a build from a repository. If git is not available, use --from-dir instead.")
 	}
 
 	var r io.Reader
@@ -462,7 +454,7 @@ func streamPathToBuild(git git.Repository, in io.Reader, out io.Writer, client o
 			if len(options.Commit) > 0 {
 				commit = options.Commit
 			}
-			info, gitErr := gitRefInfo(git, clean, commit)
+			info, gitErr := gitRefInfo(repo, clean, commit)
 			if gitErr == nil {
 				options.Commit = info.GitSourceRevision.Commit
 				options.Message = info.GitSourceRevision.Message
@@ -481,7 +473,7 @@ func streamPathToBuild(git git.Repository, in io.Reader, out io.Writer, client o
 				}
 				pr, pw := io.Pipe()
 				go func() {
-					if err := git.Archive(clean, options.Commit, "tar.gz", pw); err != nil {
+					if err := repo.Archive(clean, options.Commit, "tar.gz", pw); err != nil {
 						pw.CloseWithError(fmt.Errorf("unable to create Git archive of %q for build: %v", clean, err))
 					} else {
 						pw.CloseWithError(io.EOF)
@@ -584,7 +576,7 @@ func (o *StartBuildOptions) RunStartBuildWebHook() error {
 		config, err := o.ClientConfig.ClientConfig()
 		if err == nil {
 			if url, _, err := restclient.DefaultServerURL(config.Host, "", unversioned.GroupVersion{}, true); err == nil {
-				if url.Host == hook.Host && url.Scheme == hook.Scheme {
+				if netutil.CanonicalAddr(url) == netutil.CanonicalAddr(hook) && url.Scheme == hook.Scheme {
 					if rt, err := restclient.TransportFor(config); err == nil {
 						httpClient = &http.Client{Transport: rt}
 					}

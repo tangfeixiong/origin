@@ -23,11 +23,15 @@ user context.
 
 .SH OPTIONS
 .PP
-\fB\-c\fP, \fB\-\-context\fP=false
+\fB\-c\fP, \fB\-\-show\-context\fP=false
     Print the current user context name
 
 .PP
-\fB\-t\fP, \fB\-\-token\fP=false
+\fB\-\-show\-server\fP=false
+    Print the current server's REST API URL
+
+.PP
+\fB\-t\fP, \fB\-\-show\-token\fP=false
     Print the token the current session is using. This will return an error if you are using a different form of authentication.
 
 
@@ -38,19 +42,19 @@ user context.
 
 .PP
 \fB\-\-as\fP=""
-    Username to impersonate for the operation.
+    Username to impersonate for the operation
 
 .PP
 \fB\-\-certificate\-authority\fP=""
-    Path to a cert. file for the certificate authority.
+    Path to a cert. file for the certificate authority
 
 .PP
 \fB\-\-client\-certificate\fP=""
-    Path to a client certificate file for TLS.
+    Path to a client certificate file for TLS
 
 .PP
 \fB\-\-client\-key\fP=""
-    Path to a client key file for TLS.
+    Path to a client key file for TLS
 
 .PP
 \fB\-\-cluster\fP=""
@@ -66,7 +70,7 @@ user context.
 
 .PP
 \fB\-\-insecure\-skip\-tls\-verify\fP=false
-    If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.
+    If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure
 
 .PP
 \fB\-\-log\-flush\-frequency\fP=0
@@ -78,7 +82,7 @@ user context.
 
 .PP
 \fB\-n\fP, \fB\-\-namespace\fP=""
-    If present, the namespace scope for this CLI request.
+    If present, the namespace scope for this CLI request
 
 .PP
 \fB\-\-server\fP=""

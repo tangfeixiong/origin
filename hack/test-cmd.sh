@@ -2,16 +2,8 @@
 
 # This command checks that the built commands can function together for
 # simple scenarios.  It does not require Docker so it can run in travis.
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
 STARTTIME=$(date +%s)
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-cd "${OS_ROOT}"
-source "${OS_ROOT}/hack/lib/init.sh"
-os::log::stacktrace::install
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 os::util::environment::setup_time_vars
 
 function cleanup()
@@ -84,8 +76,24 @@ trap "cleanup" EXIT
 
 set -e
 
-function find_tests {
-  find "${OS_ROOT}/test/cmd" -name '*.sh' | grep -E "${1}" | sort -u
+function find_tests() {
+    local test_regex="${1}"
+    local full_test_list=()
+    local selected_tests=()
+
+    full_test_list=( $(find "${OS_ROOT}/test/cmd" -name '*.sh' -not -wholename '*images_tests.sh') )
+    for test in "${full_test_list[@]}"; do
+        if grep -q -E "${test_regex}" <<< "${test}"; then
+            selected_tests+=( "${test}" )
+        fi
+    done
+
+    if [[ "${#selected_tests[@]}" -eq 0 ]]; then
+        os::log::error "No tests were selected due to invalid regex."
+        return 1
+    else
+        echo "${selected_tests[@]}"
+    fi
 }
 tests=( $(find_tests ${1:-.*}) )
 
@@ -176,7 +184,8 @@ openshift start \
   --hostname="${KUBELET_HOST}" \
   --volume-dir="${VOLUME_DIR}" \
   --etcd-dir="${ETCD_DATA_DIR}" \
-  --images="${USE_IMAGES}"
+  --images="${USE_IMAGES}" \
+  --network-plugin=redhat/openshift-ovs-multitenant
 
 # Set deconflicted etcd ports in the config
 cp ${SERVER_CONFIG_DIR}/master/master-config.yaml ${SERVER_CONFIG_DIR}/master/master-config.orig.yaml
@@ -204,11 +213,16 @@ if [[ "${API_SCHEME}" == "https" ]]; then
     export CURL_KEY="${MASTER_CONFIG_DIR}/admin.key"
 fi
 
-wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/healthz" "apiserver: " 0.25 80
-wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/healthz/ready" "apiserver(ready): " 0.25 80
+os::test::junit::declare_suite_start "cmd/startup"
+os::cmd::try_until_text "oc get --raw /healthz --config='${MASTER_CONFIG_DIR}/admin.kubeconfig'" "ok"
+os::cmd::try_until_text "oc get --raw /healthz/ready --config='${MASTER_CONFIG_DIR}/admin.kubeconfig'" "ok"
+os::test::junit::declare_suite_end
 
 # profile the cli commands
 export OPENSHIFT_PROFILE="${CLI_PROFILE-}"
+
+# start up a registry for images tests
+ADMIN_KUBECONFIG="${MASTER_CONFIG_DIR}/admin.kubeconfig" KUBECONFIG="${MASTER_CONFIG_DIR}/admin.kubeconfig" install_registry
 
 #
 # Begin tests
@@ -286,12 +300,6 @@ os::cmd::expect_success_and_text 'oc config view' "current-context.+/${API_HOST}
 os::cmd::expect_success 'oc logout'
 os::cmd::expect_failure_and_text 'oc get pods' '"system:anonymous" cannot list pods'
 
-# log in as an image-pruner and test that oadm prune images works against the atomic binary
-os::cmd::expect_success "oadm policy add-cluster-role-to-user system:image-pruner pruner --config='${MASTER_CONFIG_DIR}/admin.kubeconfig'"
-os::cmd::expect_success "oc login --server=${KUBERNETES_MASTER} --certificate-authority='${MASTER_CONFIG_DIR}/ca.crt' -u pruner -p anything"
-# this shouldn't fail but instead output "Dry run enabled - no modifications will be made. Add --confirm to remove images"
-os::cmd::expect_success 'oadm prune images'
-
 # make sure we handle invalid config file destination
 os::cmd::expect_failure_and_text "oc login '${KUBERNETES_MASTER}' -u test -p test --config=/src --insecure-skip-tls-verify" 'KUBECONFIG is set to a file that cannot be created or modified'
 echo "login warnings: ok"
@@ -333,16 +341,22 @@ for test in "${tests[@]}"; do
   echo
   echo "++ ${test}"
   name=$(basename ${test} .sh)
+  namespace="cmd-${name}"
 
+  os::test::junit::declare_suite_start "cmd/${namespace}-namespace-setup"
   # switch back to a standard identity. This prevents individual tests from changing contexts and messing up other tests
-  oc project ${CLUSTER_ADMIN_CONTEXT}
-  oc new-project "cmd-${name}"
+  os::cmd::expect_success "oc project ${CLUSTER_ADMIN_CONTEXT}"
+  os::cmd::expect_success "oc new-project '${namespace}'"
+  # wait for the project cache to catch up and correctly list us in the new project
+  os::cmd::try_until_text "oc get projects -o name" "project/${namespace}"
+  os::test::junit::declare_suite_end
+
   ${test}
   oc project ${CLUSTER_ADMIN_CONTEXT}
-  oc delete project "cmd-${name}"
+  oc delete project "${namespace}"
   cp ${KUBECONFIG}{.bak,}  # since nothing ever gets deleted from kubeconfig, reset it
 done
 
 echo "[INFO] Metrics information logged to ${LOG_DIR}/metrics.log"
-wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/metrics" "metrics: " 0.25 80 > "${LOG_DIR}/metrics.log"
+oc get --raw /metrics > "${LOG_DIR}/metrics.log"
 echo "test-cmd: ok"

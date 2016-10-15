@@ -3,24 +3,6 @@
 # This script provides common script functions for the hacks
 # Requires OS_ROOT to be set
 
-set -o errexit
-set -o nounset
-set -o pipefail
-
-# The root of the build/dist directory
-readonly OS_ROOT=$(
-  unset CDPATH
-  os_root=$(dirname "${BASH_SOURCE}")/..
-
-  cd "${os_root}"
-  os_root=`pwd`
-  if [ -h "${os_root}" ]; then
-    readlink "${os_root}"
-  else
-    pwd
-  fi
-)
-
 readonly OS_BUILD_ENV_GOLANG="${OS_BUILD_ENV_GOLANG:-1.6}"
 readonly OS_BUILD_ENV_IMAGE="${OS_BUILD_ENV_IMAGE:-openshift/origin-release:golang-${OS_BUILD_ENV_GOLANG}}"
 
@@ -28,12 +10,19 @@ readonly OS_OUTPUT_SUBPATH="${OS_OUTPUT_SUBPATH:-_output/local}"
 readonly OS_OUTPUT="${OS_ROOT}/${OS_OUTPUT_SUBPATH}"
 readonly OS_LOCAL_RELEASEPATH="${OS_OUTPUT}/releases"
 readonly OS_OUTPUT_BINPATH="${OS_OUTPUT}/bin"
+readonly OS_OUTPUT_PKGDIR="${OS_OUTPUT}/pkgdir"
 
 readonly OS_GO_PACKAGE=github.com/openshift/origin
 
-readonly OS_IMAGE_COMPILE_PLATFORMS=(
-  linux/amd64
-)
+# Asks golang what it thinks the host platform is.  The go tool chain does some
+# slightly different things when the target platform matches the host platform.
+function os::build::host_platform() {
+  echo "$(go env GOHOSTOS)/$(go env GOHOSTARCH)"
+}
+readonly -f os::build::host_platform
+
+readonly OS_IMAGE_COMPILE_PLATFORMS=("$(os::build::host_platform)")
+
 readonly OS_IMAGE_COMPILE_TARGETS=(
   images/pod
   cmd/dockerregistry
@@ -46,12 +35,20 @@ readonly OS_SCRATCH_IMAGE_COMPILE_TARGETS=(
 )
 readonly OS_IMAGE_COMPILE_BINARIES=("${OS_SCRATCH_IMAGE_COMPILE_TARGETS[@]##*/}" "${OS_IMAGE_COMPILE_TARGETS[@]##*/}")
 
-readonly OS_CROSS_COMPILE_PLATFORMS=(
+OS_CROSS_COMPILE_PLATFORMS=(
   linux/amd64
   darwin/amd64
   windows/amd64
   linux/386
 )
+if [[ "$(os::build::host_platform)" == "linux/ppc64le" ]]; then
+  OS_CROSS_COMPILE_PLATFORMS+=(
+    "linux/ppc64le"
+  )
+fi
+
+readonly OS_IMAGE_COMPILE_PLATFORMS
+
 readonly OS_CROSS_COMPILE_TARGETS=(
   cmd/openshift
   cmd/oc
@@ -126,13 +123,6 @@ function os::build::binaries_from_targets() {
   done
 }
 readonly -f os::build::binaries_from_targets
-
-# Asks golang what it thinks the host platform is.  The go tool chain does some
-# slightly different things when the target platform matches the host platform.
-function os::build::host_platform() {
-  echo "$(go env GOHOSTOS)/$(go env GOHOSTARCH)"
-}
-readonly -f os::build::host_platform
 
 # Create a user friendly version of host_platform for end users
 function os::build::host_platform_friendly() {
@@ -303,6 +293,11 @@ os::build::internal::build_binaries() {
       fi
     done
 
+    # Temporarily enable swap for the duration of the build until we move
+    # to Go 1.7
+    os::build::enable_swap
+    trap "os::build::disable_swap" EXIT
+
     local host_platform=$(os::build::host_platform)
     local platform
     for platform in "${platforms[@]}"; do
@@ -323,6 +318,7 @@ os::build::internal::build_binaries() {
         eval "platform_goflags=(${!platform_goflags_envvar:-})"
 
         GOOS=${platform%/*} GOARCH=${platform##*/} go install \
+          -pkgdir "${OS_OUTPUT_PKGDIR}" \
           "${goflags[@]:+${goflags[@]}}" "${platform_goflags[@]:+${platform_goflags[@]}}" \
           -ldflags "${version_ldflags}" \
           "${nonstatics[@]}"
@@ -337,7 +333,8 @@ os::build::internal::build_binaries() {
       for test in "${tests[@]:+${tests[@]}}"; do
         local outfile="${OS_OUTPUT_BINPATH}/${platform}/$(basename ${test})"
         GOOS=${platform%/*} GOARCH=${platform##*/} go test \
-          -c -o "${outfile}" \
+          -pkgdir "${OS_OUTPUT_PKGDIR}" \
+          -i -c -o "${outfile}" \
           "${goflags[@]:+${goflags[@]}}" \
           -ldflags "${version_ldflags}" \
           "$(dirname ${test})"
@@ -460,12 +457,17 @@ function os::build::place_bins() {
         elif [[ $platform == "linux/amd64" ]]; then
           platform="linux/64bit" OS_RELEASE_ARCHIVE="openshift-origin-client-tools" os::build::archive_tar "${OS_BINARY_RELEASE_CLIENT_LINUX[@]}"
           platform="linux/64bit" OS_RELEASE_ARCHIVE="openshift-origin-server" os::build::archive_tar "${OS_BINARY_RELEASE_SERVER_LINUX[@]}"
+        elif [[ $platform == "linux/ppc64le" ]]; then
+          platform="linux/ppc64le" OS_RELEASE_ARCHIVE="openshift-origin-client-tools" os::build::archive_tar "${OS_BINARY_RELEASE_CLIENT_LINUX[@]}"
+          platform="linux/ppc64le" OS_RELEASE_ARCHIVE="openshift-origin-server" os::build::archive_tar "${OS_BINARY_RELEASE_SERVER_LINUX[@]}"
         else
           echo "++ ERROR: No release type defined for $platform"
         fi
       else
         if [[ $platform == "linux/amd64" ]]; then
           platform="linux/64bit" os::build::archive_tar "./*"
+        elif [[ $platform == "linux/ppc64le" ]]; then
+          platform="linux/ppc64le" os::build::archive_tar "./*"
         else
           echo "++ ERROR: No release type defined for $platform"
         fi
@@ -476,9 +478,19 @@ function os::build::place_bins() {
 }
 readonly -f os::build::place_bins
 
+function os::build::archive_name() {
+  if [[ "${OS_GIT_VERSION}" == *+${OS_GIT_COMMIT} ]]; then
+    echo "${OS_RELEASE_ARCHIVE}-${OS_GIT_VERSION}-$1"
+    return
+  fi
+  echo "${OS_RELEASE_ARCHIVE}-${OS_GIT_VERSION}-${OS_GIT_COMMIT}-$1"
+}
+readonly -f os::build::archive_name
+
 function os::build::archive_zip() {
   local platform_segment="${platform//\//-}"
-  local default_name="${OS_RELEASE_ARCHIVE}-${OS_GIT_VERSION}-${OS_GIT_COMMIT}-${platform_segment}.zip"
+  local default_name
+  default_name="$( os::build::archive_name "${platform_segment}" ).zip"
   local archive_name="${archive_name:-$default_name}"
   echo "++ Creating ${archive_name}"
   for file in "$@"; do
@@ -492,7 +504,8 @@ readonly -f os::build::archive_zip
 
 function os::build::archive_tar() {
   local platform_segment="${platform//\//-}"
-  local base_name="${OS_RELEASE_ARCHIVE}-${OS_GIT_VERSION}-${OS_GIT_COMMIT}-${platform_segment}"
+  local base_name
+  base_name="$( os::build::archive_name "${platform_segment}" )"
   local default_name="${base_name}.tar.gz"
   local archive_name="${archive_name:-$default_name}"
   echo "++ Creating ${archive_name}"
@@ -663,21 +676,6 @@ function os::build::os_version_vars() {
 
     # Use git describe to find the version based on annotated tags.
     if [[ -n ${OS_GIT_VERSION-} ]] || OS_GIT_VERSION=$("${git[@]}" describe --tags --abbrev=7 "${OS_GIT_COMMIT}^{commit}" 2>/dev/null); then
-      # This translates the "git describe" to an actual semver.org
-      # compatible semantic version that looks something like this:
-      #   v1.1.0-alpha.0.6+84c76d1142ea4d
-      #
-      # TODO: We continue calling this "git version" because so many
-      # downstream consumers are expecting it there.
-      OS_GIT_VERSION=$(echo "${OS_GIT_VERSION}" | sed "s/-\([0-9]\{1,\}\)-g\([0-9a-f]\{7\}\)$/\+\2/")
-      if [[ "${OS_GIT_TREE_STATE}" == "dirty" ]]; then
-        # git describe --dirty only considers changes to existing files, but
-        # that is problematic since new untracked .go files affect the build,
-        # so use our idea of "dirty" from git status instead.
-        OS_GIT_SHORT_VERSION+="-dirty"
-        OS_GIT_VERSION+="-dirty"
-      fi
-
       # Try to match the "git describe" output to a regex to try to extract
       # the "major" and "minor" versions and whether this is the exact tagged
       # version or whether the tree is between two tagged versions.
@@ -688,14 +686,29 @@ function os::build::os_version_vars() {
           OS_GIT_MINOR+="+"
         fi
       fi
+
+      # This translates the "git describe" to an actual semver.org
+      # compatible semantic version that looks something like this:
+      #   v1.1.0-alpha.0.6+84c76d1142ea4d
+      #
+      # TODO: We continue calling this "git version" because so many
+      # downstream consumers are expecting it there.
+      OS_GIT_VERSION=$(echo "${OS_GIT_VERSION}" | sed "s/-\([0-9]\{1,\}\)-g\([0-9a-f]\{7,40\}\)$/\+\2/")
+      if [[ "${OS_GIT_TREE_STATE}" == "dirty" ]]; then
+        # git describe --dirty only considers changes to existing files, but
+        # that is problematic since new untracked .go files affect the build,
+        # so use our idea of "dirty" from git status instead.
+        OS_GIT_SHORT_VERSION+="-dirty"
+        OS_GIT_VERSION+="-dirty"
+      fi
     fi
   fi
 }
 readonly -f os::build::os_version_vars
 
 function os::build::etcd_version_vars() {
-  ETCD_GIT_COMMIT=$(go run "${OS_ROOT}/tools/godepversion/godepversion.go" "${OS_ROOT}/Godeps/Godeps.json" "github.com/coreos/etcd/client" "comment")
-  ETCD_GIT_VERSION=$(echo "${ETCD_GIT_COMMIT}" | sed -E "s/\-.*/\+git/g" | sed -E "s/v//")
+  ETCD_GIT_VERSION=$(go run "${OS_ROOT}/tools/godepversion/godepversion.go" "${OS_ROOT}/Godeps/Godeps.json" "github.com/coreos/etcd/etcdserver" "comment")
+  ETCD_GIT_COMMIT=$(go run "${OS_ROOT}/tools/godepversion/godepversion.go" "${OS_ROOT}/Godeps/Godeps.json" "github.com/coreos/etcd/etcdserver")
 }
 readonly -f os::build::etcd_version_vars
 
@@ -711,7 +724,7 @@ function os::build::kube_version_vars() {
   #
   # TODO: We continue calling this "git version" because so many
   # downstream consumers are expecting it there.
-  KUBE_GIT_VERSION=$(echo "${KUBE_GIT_VERSION}" | sed "s/-\([0-9]\{1,\}\)-g\([0-9a-f]\{7\}\)$/\+\2/")
+  KUBE_GIT_VERSION=$(echo "${KUBE_GIT_VERSION}" | sed "s/-\([0-9]\{1,\}\)-g\([0-9a-f]\{7,40\}\)$/\+\2/")
 
   # Try to match the "git describe" output to a regex to try to extract
   # the "major" and "minor" versions and whether this is the exact tagged
@@ -791,6 +804,87 @@ function os::build::ldflags() {
   echo "${ldflags[*]-}"
 }
 readonly -f os::build::ldflags
+
+# os::build::enable_swap attempts to enable swap for the system if a) this is Linux and b)
+# the amount of physical memory is less than 10GB. This is a stopgap until we have
+# better control over memory use in Go 1.7+.
+function os::build::enable_swap() {
+  # if we aren't on linux or have more than 9GB of memory
+  if [[ -n "${OS_BUILD_SWAP_DISABLE-}" || "$(go env GOHOSTOS)" != "linux" || "$( os::build::physmem_gb )" -gt 9 ]]; then
+    return
+  fi
+  # if we don't have the swapon command available
+  if ! swapon &>/dev/null; then
+    return
+  fi
+  # if swap is already on
+  if [[ "$( swapon --show --noheadings | wc -l )" -ne 0 ]]; then
+    return
+  fi
+  echo "++ temporarily enabling swap space to assist in building in limited memory - use OS_BUILD_SWAP_DISABLE=1 to bypass"
+
+  (
+    set -e
+    sudo cp /etc/fstab /origin-backupfstab
+    sudo dd if=/dev/zero of=/origin-swapfile bs=1M count=${OS_BUILD_SWAP_SIZE:-2048}
+    sudo chmod 600 /origin-swapfile
+    sudo mkswap /origin-swapfile
+    sudo swapon /origin-swapfile
+    sudo /bin/sh -c 'echo "/origin-swapfile none swap defaults 0 0" >> /etc/fstab'
+  ) &>/dev/null || true
+}
+readonly -f os::build::enable_swap
+
+# os::build::disable_swap undoes the effects of os::build::enable_swap
+function os::build::disable_swap() {
+  # if we aren't on linux or have more than 9GB of memory
+  if [[ -n "${OS_BUILD_SWAP_DISABLE-}" || "$(go env GOHOSTOS)" != "linux" ]]; then
+    return
+  fi
+  # if we previously set up a swapfile
+  if [[ ! -f /origin-swapfile ]]; then
+    return
+  fi
+  (
+    set +e
+    sudo swapoff /origin-swapfile
+    sudo cp /origin-backupfstab /etc/fstab
+    sudo rm -f /origin-backupfstab /origin-swapfile
+  ) || true
+}
+readonly -f os::build::disable_swap
+
+# os::build::physmem_gb returns the approximate gigabytes of memory on the system
+# This is copied verbatim from kube for the purposes of detecting how much available
+# memory we have for building.
+function os::build::physmem_gb() {
+  local mem
+
+  # Linux kernel version >=3.14, in kb
+  if mem=$(grep MemAvailable /proc/meminfo | awk '{ print $2 }'); then
+    echo $(( ${mem} / 1048576 ))
+    return
+  fi
+
+  # Linux, in kb
+  if mem=$(grep MemTotal /proc/meminfo | awk '{ print $2 }'); then
+    echo $(( ${mem} / 1048576 ))
+    return
+  fi
+
+  # OS X, in bytes. Note that get_physmem, as used, should only ever
+  # run in a Linux container (because it's only used in the multiple
+  # platform case, which is a Dockerized build), but this is provided
+  # for completeness.
+  if mem=$(sysctl -n hw.memsize 2>/dev/null); then
+    echo $(( ${mem} / 1073741824 ))
+    return
+  fi
+
+  # If we can't infer it, just give up and assume a low memory system
+  echo 1
+}
+readonly -f os::build::physmem_gb
 
 # os::build::require_clean_tree exits if the current Git tree is not clean.
 function os::build::require_clean_tree() {
@@ -1007,18 +1101,17 @@ readonly -f os::build::find-binary
 # is mounted by default and the output of the command is the container id.
 function os::build::environment::create() {
   set -o errexit
-  local golang_version="${OS_BUILD_ENV_GOLANG}"
   local release_image="${OS_BUILD_ENV_IMAGE}"
   local additional_context="${OS_BUILD_ENV_DOCKER_ARGS:-}"
-  if [[ -z "${additional_context}" && "${OS_BUILD_ENV_USE_DOCKER:-y}" == "y" ]]; then
-    additional_context="--privileged -v /var/run/docker.sock:/var/run/docker.sock"
+  if [[ "${OS_BUILD_ENV_USE_DOCKER:-y}" == "y" ]]; then
+    additional_context+="--privileged -v /var/run/docker.sock:/var/run/docker.sock"
 
     if [[ "${OS_BUILD_ENV_LOCAL_DOCKER:-n}" == "y" ]]; then
       # if OS_BUILD_ENV_LOCAL_DOCKER==y, add the local OS_ROOT as the bind mount to the working dir
       # and set the running user to the current user
       local workingdir
       workingdir=$( os::build::environment::release::workingdir )
-      additional_context="${additional_context} -v ${OS_ROOT}:${workingdir} -u $(id -u)"
+      additional_context+=" -v ${OS_ROOT}:${workingdir} -u $(id -u)"
     elif [[ -n "${OS_BUILD_ENV_REUSE_VOLUME:-}" ]]; then
       # if OS_BUILD_ENV_REUSE_VOLUME is set, create a docker volume to store the working output so
       # successive iterations can reuse shared code.
@@ -1026,7 +1119,7 @@ function os::build::environment::create() {
       workingdir=$( os::build::environment::release::workingdir )
       name="$( echo "${OS_BUILD_ENV_REUSE_VOLUME}" | tr '[:upper:]' '[:lower:]' )"
       docker volume create --name "${name}" > /dev/null
-      additional_context="${additional_context} -v ${name}:${workingdir}"
+      additional_context+=" -v ${name}:${workingdir}"
     fi
   fi
 
@@ -1060,6 +1153,37 @@ function os::build::environment::cleanup() {
 }
 readonly -f os::build::environment::cleanup
 
+# os::build::environment::start starts the container provided as the first argument
+# using whatever content exists in the container already.
+function os::build::environment::start() {
+  local container=$1
+
+  docker start "${container}" > /dev/null
+  docker logs -f "${container}"
+
+  local exitcode
+  exitcode="$( docker inspect --type container -f '{{ .State.ExitCode }}' "${container}" )"
+
+  # extract content from the image
+  if [[ -n "${OS_BUILD_ENV_PRESERVE-}" ]]; then
+    local workingdir
+    workingdir="$(docker inspect -f '{{ index . "Config" "WorkingDir" }}' "${container}")"
+    local oldIFS="${IFS}"
+    IFS=:
+    for path in ${OS_BUILD_ENV_PRESERVE}; do
+      local parent=.
+      if [[ "${path}" != "." ]]; then
+        parent="$( dirname ${path} )"
+        mkdir -p "${parent}"
+      fi
+      docker cp "${container}:${workingdir}/${path}" "${parent}"
+    done
+    IFS="${oldIFS}"
+  fi
+  return $exitcode
+}
+readonly -f os::build::environment::start
+
 # os::build::environment::withsource starts the container provided as the first argument
 # after copying in the contents of the current Git repository at HEAD (or, if specified,
 # the ref specified in the second argument).
@@ -1082,8 +1206,7 @@ function os::build::environment::withsource() {
     git archive --format=tar "${commit}" | docker cp - "${container}:${workingdir}"
   fi
 
-  docker start "${container}" > /dev/null
-  docker logs -f "${container}"
+  os::build::environment::start "${container}"
 }
 readonly -f os::build::environment::withsource
 
@@ -1092,14 +1215,21 @@ readonly -f os::build::environment::withsource
 function os::build::environment::run() {
   local commit="${OS_GIT_COMMIT:-HEAD}"
   local volume="${OS_BUILD_ENV_REUSE_VOLUME:-}"
+  local exists=
   if [[ -z "${OS_BUILD_ENV_REUSE_VOLUME:-}" ]]; then
     volume="origin-build-$( git rev-parse "${commit}" )"
+  elif docker volume inspect "${OS_BUILD_ENV_REUSE_VOLUME}" &>/dev/null; then
+    exists=y
   fi
 
   local container
   container="$( OS_BUILD_ENV_REUSE_VOLUME=${volume} os::build::environment::create "$@" )"
   trap "os::build::environment::cleanup ${container}" EXIT
 
-  os::build::environment::withsource "${container}" "${commit}"
+  if [[ "${exists}" == "y" ]]; then
+    os::build::environment::start "${container}"
+  else
+    os::build::environment::withsource "${container}" "${commit}"
+  fi
 }
 readonly -f os::build::environment::run

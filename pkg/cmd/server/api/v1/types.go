@@ -73,6 +73,9 @@ type NodeConfig struct {
 	// IPTablesSyncPeriod is how often iptable rules are refreshed
 	IPTablesSyncPeriod string `json:"iptablesSyncPeriod"`
 
+	// EnableUnidling controls whether or not the hybrid unidling proxy will be set up
+	EnableUnidling *bool `json:"enableUnidling"`
+
 	// VolumeConfig contains options for configuring volumes on the node.
 	VolumeConfig NodeVolumeConfig `json:"volumeConfig"`
 }
@@ -117,8 +120,7 @@ type NodeAuthConfig struct {
 // NodeNetworkConfig provides network options for the node
 type NodeNetworkConfig struct {
 	// NetworkPluginName is a string specifying the networking plugin
-	// Optional for OpenShift network plugin, node will auto detect network plugin configured by OpenShift master.
-	NetworkPluginName string `json:"networkPluginName,omitempty"`
+	NetworkPluginName string `json:"networkPluginName"`
 	// Maximum transmission unit for the network packets
 	MTU uint32 `json:"mtu"`
 }
@@ -253,10 +255,10 @@ type AuditConfig struct {
 
 // JenkinsPipelineConfig holds configuration for the Jenkins pipeline strategy
 type JenkinsPipelineConfig struct {
-	// If the enabled flag is set, a Jenkins server will be spawned from the provided
+	// AutoProvisionEnabled determines whether a Jenkins server will be spawned from the provided
 	// template when the first build config in the project with type JenkinsPipeline
-	// is created. When not specified this option defaults to true.
-	Enabled *bool `json:"enabled"`
+	// is created. When not specified this option defaults to false.
+	AutoProvisionEnabled *bool `json:"autoProvisionEnabled"`
 	// TemplateNamespace contains the namespace name where the Jenkins template is stored
 	TemplateNamespace string `json:"templateNamespace"`
 	// TemplateName is the name of the default Jenkins template
@@ -401,6 +403,11 @@ type MasterNetworkConfig struct {
 	// CIDR will be rejected. Rejections will be applied first, then the IP checked against one of the allowed CIDRs. You
 	// should ensure this range does not overlap with your nodes, pods, or service CIDRs for security reasons.
 	ExternalIPNetworkCIDRs []string `json:"externalIPNetworkCIDRs"`
+	// IngressIPNetworkCIDR controls the range to assign ingress ips from for services of type LoadBalancer on bare
+	// metal. If empty, ingress ips will not be assigned. It may contain a single CIDR that will be allocated from.
+	// For security reasons, you should ensure that this range does not overlap with the CIDRs reserved for external ips,
+	// nodes, pods, or services.
+	IngressIPNetworkCIDR string `json:"ingressIPNetworkCIDR"`
 }
 
 // ImageConfig holds the necessary configuration options for building image names for system components
@@ -970,8 +977,10 @@ type KubernetesMasterConfig struct {
 	ServicesNodePortRange string `json:"servicesNodePortRange"`
 	// StaticNodeNames is the list of nodes that are statically known
 	StaticNodeNames []string `json:"staticNodeNames"`
+
 	// SchedulerConfigFile points to a file that describes how to set up the scheduler. If empty, you get the default scheduling rules.
 	SchedulerConfigFile string `json:"schedulerConfigFile"`
+
 	// PodEvictionTimeout controls grace period for deleting pods on failed nodes.
 	// It takes valid time duration string. If empty, you get the default pod eviction timeout.
 	PodEvictionTimeout string `json:"podEvictionTimeout"`
@@ -990,6 +999,10 @@ type KubernetesMasterConfig struct {
 	// the server will not start. These values may override other settings in KubernetesMasterConfig which may cause invalid
 	// configurations.
 	ControllerArguments ExtendedArguments `json:"controllerArguments"`
+	// SchedulerArguments are key value pairs that will be passed directly to the Kube scheduler that match the scheduler's
+	// command line arguments.  These are not migrated, but if you reference a value that does not exist the server will not
+	// start. These values may override other settings in KubernetesMasterConfig which may cause invalid configurations.
+	SchedulerArguments ExtendedArguments `json:"schedulerArguments"`
 }
 
 // CertInfo relates a certificate with a private key
@@ -1244,5 +1257,5 @@ type DefaultAdmissionConfig struct {
 	unversioned.TypeMeta `json:",inline"`
 
 	// Disable turns off an admission plugin that is enabled by default.
-	Disable bool
+	Disable bool `json:"disable"`
 }

@@ -168,11 +168,6 @@ type RollingDeploymentStrategyParams struct {
 	// new RC can be scaled up further, ensuring that total number of pods running
 	// at any time during the update is atmost 130% of original pods.
 	MaxSurge intstr.IntOrString
-	// UpdatePercent is the percentage of replicas to scale up or down each
-	// interval. If nil, one replica will be scaled up and down each interval.
-	// If negative, the scale order will be down/up instead of up/down.
-	// DEPRECATED: Use MaxUnavailable/MaxSurge instead.
-	UpdatePercent *int32
 	// Pre is a lifecycle hook which is executed before the deployment process
 	// begins. All LifecycleHookFailurePolicy values are supported.
 	Pre *LifecycleHook
@@ -350,6 +345,8 @@ type DeploymentConfigStatus struct {
 	// Details are the reasons for the update to this deployment config.
 	// This could be based on a change made by the user or caused by an automatic trigger
 	Details *DeploymentDetails
+	// Conditions represents the latest available observations of a deployment config's current state.
+	Conditions []DeploymentCondition
 }
 
 // DeploymentTriggerPolicy describes a policy for a single trigger that results in a new deployment.
@@ -377,9 +374,7 @@ const (
 // DeploymentTriggerImageChangeParams represents the parameters to the ImageChange trigger.
 type DeploymentTriggerImageChangeParams struct {
 	// Automatic means that the detection of a new tag value should result in an image update
-	// inside the pod template. Deployment configs that haven't been deployed yet will always
-	// have their images updated. Deployment configs that have been deployed at least once, will
-	// have their images updated only if this is set to true.
+	// inside the pod template.
 	Automatic bool
 	// ContainerNames is used to restrict tag updates to the specified set of container names in a pod.
 	ContainerNames []string
@@ -412,6 +407,37 @@ type DeploymentCauseImageTrigger struct {
 	// From is a reference to the changed object which triggered a deployment. The field may have
 	// the kinds DockerImage, ImageStreamTag, or ImageStreamImage.
 	From kapi.ObjectReference
+}
+
+type DeploymentConditionType string
+
+// These are valid conditions of a deployment config.
+const (
+	// DeploymentAvailable means the deployment config is available, ie. at least the minimum available
+	// replicas required are up and running for at least minReadySeconds.
+	DeploymentAvailable DeploymentConditionType = "Available"
+	// DeploymentProgressing means the deployment config is progressing. Progress for a deployment
+	// config is considered when a new replica set is created or adopted, and when new pods scale up or
+	// old pods scale down. Progress is not estimated for paused deployment configs, when the deployment
+	// config needs to rollback, or when progressDeadlineSeconds is not specified.
+	DeploymentProgressing DeploymentConditionType = "Progressing"
+	// DeploymentReplicaFailure is added in a deployment config when one of its pods
+	// fails to be created or deleted.
+	DeploymentReplicaFailure DeploymentConditionType = "ReplicaFailure"
+)
+
+// DeploymentCondition describes the state of a deployment config at a certain point.
+type DeploymentCondition struct {
+	// Type of deployment condition.
+	Type DeploymentConditionType
+	// Status of the condition, one of True, False, Unknown.
+	Status kapi.ConditionStatus
+	// The last time the condition transitioned from one status to another.
+	LastTransitionTime unversioned.Time
+	// The reason for the condition's last transition.
+	Reason string
+	// A human readable message indicating details about the transition.
+	Message string
 }
 
 // DeploymentConfigList is a collection of deployment configs.
@@ -448,6 +474,18 @@ type DeploymentConfigRollbackSpec struct {
 	IncludeReplicationMeta bool
 	// IncludeStrategy specifies whether to include the deployment Strategy.
 	IncludeStrategy bool
+}
+
+// DeploymentRequest is a request to a deployment config for a new deployment.
+type DeploymentRequest struct {
+	unversioned.TypeMeta
+	// Name of the deployment config for requesting a new deployment.
+	Name string
+	// Latest will update the deployment config with the latest state from all triggers.
+	Latest bool
+	// Force will try to force a new deployment to run. If the deployment config is paused,
+	// then setting this to true will return an Invalid error.
+	Force bool
 }
 
 // DeploymentLog represents the logs for a deployment

@@ -72,6 +72,11 @@ func (a *buildDefaults) Admit(attributes admission.Attributes) error {
 
 	a.applyBuildDefaults(build)
 
+	err = buildadmission.SetBuildLogLevel(attributes, build)
+	if err != nil {
+		return err
+	}
+
 	return buildadmission.SetBuild(attributes, build, version)
 }
 
@@ -81,6 +86,21 @@ func (a *buildDefaults) applyBuildDefaults(build *buildapi.Build) {
 	for _, envVar := range a.defaultsConfig.Env {
 		glog.V(5).Infof("Adding default environment variable %s=%s to build %s/%s", envVar.Name, envVar.Value, build.Namespace, build.Name)
 		addDefaultEnvVar(envVar, buildEnv)
+	}
+
+	// Apply default labels
+	for _, lbl := range a.defaultsConfig.ImageLabels {
+		glog.V(5).Infof("Adding default image label %s=%s to build %s/%s", lbl.Name, lbl.Value, build.Namespace, build.Name)
+		addDefaultLabel(lbl, &build.Spec.Output.ImageLabels)
+	}
+
+	sourceDefaults := a.defaultsConfig.SourceStrategyDefaults
+	sourceStrategy := build.Spec.Strategy.SourceStrategy
+	if sourceDefaults != nil && sourceDefaults.Incremental != nil && *sourceDefaults.Incremental &&
+		sourceStrategy != nil && sourceStrategy.Incremental == nil {
+		glog.V(5).Infof("Setting source strategy Incremental to true in build %s/%s", build.Namespace, build.Name)
+		t := true
+		build.Spec.Strategy.SourceStrategy.Incremental = &t
 	}
 
 	// Apply git proxy defaults
@@ -102,6 +122,14 @@ func (a *buildDefaults) applyBuildDefaults(build *buildapi.Build) {
 			build.Spec.Source.Git.HTTPSProxy = &t
 		}
 	}
+
+	if len(a.defaultsConfig.GitNoProxy) != 0 {
+		if build.Spec.Source.Git.NoProxy == nil {
+			t := a.defaultsConfig.GitNoProxy
+			glog.V(5).Infof("Setting default Git no proxy of build %s/%s to %s", build.Namespace, build.Name, t)
+			build.Spec.Source.Git.NoProxy = &t
+		}
+	}
 }
 
 func getBuildEnv(build *buildapi.Build) *[]kapi.EnvVar {
@@ -117,6 +145,10 @@ func getBuildEnv(build *buildapi.Build) *[]kapi.EnvVar {
 }
 
 func addDefaultEnvVar(v kapi.EnvVar, envVars *[]kapi.EnvVar) {
+	if envVars == nil {
+		return
+	}
+
 	found := false
 	for i := range *envVars {
 		if (*envVars)[i].Name == v.Name {
@@ -125,5 +157,17 @@ func addDefaultEnvVar(v kapi.EnvVar, envVars *[]kapi.EnvVar) {
 	}
 	if !found {
 		*envVars = append(*envVars, v)
+	}
+}
+
+func addDefaultLabel(defaultLabel buildapi.ImageLabel, buildLabels *[]buildapi.ImageLabel) {
+	found := false
+	for _, lbl := range *buildLabels {
+		if lbl.Name == defaultLabel.Name {
+			found = true
+		}
+	}
+	if !found {
+		*buildLabels = append(*buildLabels, defaultLabel)
 	}
 }

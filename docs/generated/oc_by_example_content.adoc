@@ -68,16 +68,18 @@ Output shell completion code for the given shell (bash or zsh)
   oc adm completion bash > bash_completion.sh
   source bash_completion.sh
 
-  # The above example depends on the bash-completion
-framework. It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
+  # The above example depends on the bash-completion framework.
+  It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
 
   brew install bash-completion
   source $(brew --prefix)/etc/bash_completion
   oc adm completion bash > bash_completion.sh
   source bash_completion.sh
 
-  # In zsh, the following will load openshift cli zsh completion:
+  # In zsh*, the following will load openshift cli zsh completion:
   source <(oc adm completion zsh)
+
+  * zsh completions are only supported in versions of zsh >= 5.2
 ----
 ====
 
@@ -105,8 +107,25 @@ Displays the current-context
 
 [options="nowrap"]
 ----
+  
   # Display the current-context
   oc adm config current-context
+----
+====
+
+
+== oc adm config get-contexts
+Describe one or many contexts
+
+====
+
+[options="nowrap"]
+----
+  # List all the contexts in your kubeconfig file
+  oc adm config get-contexts
+  
+  # Describe one context in your kubeconfig file.
+  oc adm config get-contexts my-context
 ----
 ====
 
@@ -118,6 +137,7 @@ Sets a cluster entry in kubeconfig
 
 [options="nowrap"]
 ----
+  
   # Set only the server field on the e2e cluster entry without touching other values.
   oc adm config set-cluster e2e --server=https://1.2.3.4
   
@@ -137,6 +157,7 @@ Sets a context entry in kubeconfig
 
 [options="nowrap"]
 ----
+  
   # Set the user field on the gce context entry without touching other values
   oc adm config set-context gce --user=cluster-admin
 ----
@@ -150,6 +171,7 @@ Sets a user entry in kubeconfig
 
 [options="nowrap"]
 ----
+  
   # Set only the "client-key" field on the "cluster-admin"
   # entry, without touching other values:
   oc adm config set-credentials cluster-admin --client-key=~/.kube/admin.key
@@ -159,17 +181,27 @@ Sets a user entry in kubeconfig
   
   # Embed client certificate data in the "cluster-admin" entry
   oc adm config set-credentials cluster-admin --client-certificate=~/.kube/admin.crt --embed-certs=true
+  
+  # Enable the Google Compute Platform auth provider for the "cluster-admin" entry
+  oc adm config set-credentials cluster-admin --auth-provider=gcp
+  
+  # Enable the OpenID Connect auth provider for the "cluster-admin" entry with additional args
+  oc adm config set-credentials cluster-admin --auth-provider=oidc --auth-provider-arg=client-id=foo --auth-provider-arg=client-secret=bar
+  
+  # Remove the "client-secret" config value for the OpenID Connect auth provider for the "cluster-admin" entry
+  oc adm config set-credentials cluster-admin --auth-provider=oidc --auth-provider-arg=client-secret-
 ----
 ====
 
 
 == oc adm config view
-Displays merged kubeconfig settings or a specified kubeconfig file.
+Display merged kubeconfig settings or a specified kubeconfig file
 
 ====
 
 [options="nowrap"]
 ----
+  
   # Show Merged kubeconfig settings.
   oc adm config view
   
@@ -186,6 +218,7 @@ Mark node as unschedulable
 
 [options="nowrap"]
 ----
+
 # Mark node "foo" as unschedulable.
 oc adm cordon foo
 
@@ -200,6 +233,7 @@ Drain node in preparation for maintenance
 
 [options="nowrap"]
 ----
+
 # Drain node "foo", even if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet on it.
 $ oc adm drain foo --force
 
@@ -235,6 +269,9 @@ Create a new group
 
   # Add a group with two users
   oc adm groups new my-group user1 user2
+
+  # Add a group with one user and shorter output
+  oc adm groups new my-group user1 -o name
 ----
 ====
 
@@ -344,6 +381,12 @@ Manage nodes - list pods, evacuate, or mark ready
 	# Migrate selected pods
 	oc adm manage-node <mynode> --evacuate --pod-selector="<service=myapp>"
 
+	# Migrate selected pods, use a grace period of 60 seconds
+	oc adm manage-node <mynode> --evacuate --grace-period=60 --pod-selector="<service=myapp>"
+
+	# Migrate selected pods not backed by replication controller
+	oc adm manage-node <mynode> --evacuate --force --pod-selector="<service=myapp>"
+
 	# Show pods that will be migrated
 	oc adm manage-node <mynode> --evacuate --dry-run --pod-selector="<service=myapp>"
 
@@ -401,6 +444,22 @@ Update the stored version of API objects
 ====
 
 
+== oc adm pod-network isolate-projects
+Isolate project network
+
+====
+
+[options="nowrap"]
+----
+	# Provide isolation for project p1
+	oc adm pod-network isolate-projects <p1>
+
+	# Allow all projects with label name=top-secret to have their own isolated project network
+	oc adm pod-network isolate-projects --selector='name=top-secret'
+----
+====
+
+
 == oc adm pod-network join-projects
 Join project network
 
@@ -434,16 +493,16 @@ Make project network global
 
 
 == oc adm policy add-role-to-user
-Add users or serviceaccounts to a role in the current project
+Add a role to users or serviceaccounts for the current project
 
 ====
 
 [options="nowrap"]
 ----
-  # Add the 'view' role to user1 in the current project
+  # Add the 'view' role to user1 for the current project
   oc adm policy add-role-to-user view user1
 
-  # Add the 'edit' role to serviceaccount1 in the current project
+  # Add the 'edit' role to serviceaccount1 for the current project
   oc adm policy add-role-to-user edit -z serviceaccount1
 ----
 ====
@@ -671,11 +730,82 @@ Update the taints on one or more nodes
 
 [options="nowrap"]
 ----
+
 # Update node 'foo' with a taint with key 'dedicated' and value 'special-user' and effect 'NoSchedule'.
-# If a taint with that key already exists, its value and effect are replaced as specified.
+# If a taint with that key and effect already exists, its value is replaced as specified.
 oc adm taint nodes foo dedicated=special-user:NoSchedule
-# Remove from node 'foo' the taint with key 'dedicated' if one exists.
+
+# Remove from node 'foo' the taint with key 'dedicated' and effect 'NoSchedule' if one exists.
+oc adm taint nodes foo dedicated:NoSchedule-
+
+# Remove from node 'foo' all the taints with key 'dedicated'
 oc adm taint nodes foo dedicated-
+----
+====
+
+
+== oc adm top images
+Show usage statistics for Images
+
+====
+
+[options="nowrap"]
+----
+  # Show usage statistics for Images
+  oc adm top images
+----
+====
+
+
+== oc adm top imagestreams
+Show usage statistics for ImageStreams
+
+====
+
+[options="nowrap"]
+----
+  # Show usage statistics for ImageStreams
+  oc adm top imagestreams
+----
+====
+
+
+== oc adm top node
+Display Resource (CPU/Memory/Storage) usage of nodes
+
+====
+
+[options="nowrap"]
+----
+
+# Show metrics for all nodes
+kubectl top node
+
+# Show metrics for a given node
+kubectl top node NODE_NAME
+----
+====
+
+
+== oc adm top pod
+Display Resource (CPU/Memory/Storage) usage of pods
+
+====
+
+[options="nowrap"]
+----
+
+# Show metrics for all pods in the default namespace
+kubectl top pod
+
+# Show metrics for all pods in the given namespace
+kubectl top pod --namespace=NAMESPACE
+
+# Show metrics for a given pod and its containers
+kubectl top pod POD_NAME --containers
+
+# Show metrics for the pods defined by label name=myLabel
+kubectl top pod -l name=myLabel
 ----
 ====
 
@@ -687,6 +817,7 @@ Mark node as schedulable
 
 [options="nowrap"]
 ----
+
 # Mark node "foo" as schedulable.
 $ oc adm uncordon foo
 
@@ -739,7 +870,7 @@ cat pod.json | oc apply -f -
 
 
 == oc attach
-Attach to a running container.
+Attach to a running container
 
 ====
 
@@ -759,7 +890,7 @@ Attach to a running container.
 
 
 == oc autoscale
-Autoscale a deployment config or replication controller
+Autoscale a deployment config, deployment, replication controller, or replica set
 
 ====
 
@@ -852,16 +983,18 @@ Output shell completion code for the given shell (bash or zsh)
   oc completion bash > bash_completion.sh
   source bash_completion.sh
 
-  # The above example depends on the bash-completion
-framework. It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
+  # The above example depends on the bash-completion framework.
+  It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
 
   brew install bash-completion
   source $(brew --prefix)/etc/bash_completion
   oc completion bash > bash_completion.sh
   source bash_completion.sh
 
-  # In zsh, the following will load openshift cli zsh completion:
+  # In zsh*, the following will load openshift cli zsh completion:
   source <(oc completion zsh)
+
+  * zsh completions are only supported in versions of zsh >= 5.2
 ----
 ====
 
@@ -889,8 +1022,25 @@ Displays the current-context
 
 [options="nowrap"]
 ----
+  
   # Display the current-context
   oc config current-context
+----
+====
+
+
+== oc config get-contexts
+Describe one or many contexts
+
+====
+
+[options="nowrap"]
+----
+  # List all the contexts in your kubeconfig file
+  oc config get-contexts
+  
+  # Describe one context in your kubeconfig file.
+  oc config get-contexts my-context
 ----
 ====
 
@@ -902,6 +1052,7 @@ Sets a cluster entry in kubeconfig
 
 [options="nowrap"]
 ----
+  
   # Set only the server field on the e2e cluster entry without touching other values.
   oc config set-cluster e2e --server=https://1.2.3.4
   
@@ -921,6 +1072,7 @@ Sets a context entry in kubeconfig
 
 [options="nowrap"]
 ----
+  
   # Set the user field on the gce context entry without touching other values
   oc config set-context gce --user=cluster-admin
 ----
@@ -934,6 +1086,7 @@ Sets a user entry in kubeconfig
 
 [options="nowrap"]
 ----
+  
   # Set only the "client-key" field on the "cluster-admin"
   # entry, without touching other values:
   oc config set-credentials cluster-admin --client-key=~/.kube/admin.key
@@ -943,17 +1096,27 @@ Sets a user entry in kubeconfig
   
   # Embed client certificate data in the "cluster-admin" entry
   oc config set-credentials cluster-admin --client-certificate=~/.kube/admin.crt --embed-certs=true
+  
+  # Enable the Google Compute Platform auth provider for the "cluster-admin" entry
+  oc config set-credentials cluster-admin --auth-provider=gcp
+  
+  # Enable the OpenID Connect auth provider for the "cluster-admin" entry with additional args
+  oc config set-credentials cluster-admin --auth-provider=oidc --auth-provider-arg=client-id=foo --auth-provider-arg=client-secret=bar
+  
+  # Remove the "client-secret" config value for the OpenID Connect auth provider for the "cluster-admin" entry
+  oc config set-credentials cluster-admin --auth-provider=oidc --auth-provider-arg=client-secret-
 ----
 ====
 
 
 == oc config view
-Displays merged kubeconfig settings or a specified kubeconfig file.
+Display merged kubeconfig settings or a specified kubeconfig file
 
 ====
 
 [options="nowrap"]
 ----
+  
   # Show Merged kubeconfig settings.
   oc config view
   
@@ -1007,27 +1170,42 @@ Create cluster resource quota resource.
 
 [options="nowrap"]
 ----
-  # Create an cluster resource quota limited to 10 pods
-  oc create clusterresourcequota limit-bob --project-label-selector=openshift.io/requester=user-bob --hard=pods=10
+  # Create a cluster resource quota limited to 10 pods
+  oc create clusterresourcequota limit-bob --project-annotation-selector=openshift.io/requester=user-bob --hard=pods=10
 ----
 ====
 
 
 == oc create configmap
-Create a configMap from a local file, directory or literal value.
+Create a configmap from a local file, directory or literal value
 
 ====
 
 [options="nowrap"]
 ----
+  
   # Create a new configmap named my-config with keys for each file in folder bar
   oc create configmap my-config --from-file=path/to/bar
   
   # Create a new configmap named my-config with specified keys instead of names on disk
   oc create configmap my-config --from-file=key1=/path/to/bar/file1.txt --from-file=key2=/path/to/bar/file2.txt
   
-  # Create a new configMap named my-config with key1=config1 and key2=config2
+  # Create a new configmap named my-config with key1=config1 and key2=config2
   oc create configmap my-config --from-literal=key1=config1 --from-literal=key2=config2
+----
+====
+
+
+== oc create deployment
+Create a deployment with the specified name.
+
+====
+
+[options="nowrap"]
+----
+  
+  # Create a new deployment named my-dep that runs the busybox image.
+  oc create deployment my-dep --image=busybox
 ----
 ====
 
@@ -1072,12 +1250,13 @@ Create a new empty image stream.
 
 
 == oc create namespace
-Create a namespace with the specified name.
+Create a namespace with the specified name
 
 ====
 
 [options="nowrap"]
 ----
+  
   # Create a new namespace named my-namespace
   oc create namespace my-namespace
 ----
@@ -1165,12 +1344,13 @@ Create a route that uses reencrypt TLS termination
 
 
 == oc create secret docker-registry
-Create a secret for use with a Docker registry.
+Create a secret for use with a Docker registry
 
 ====
 
 [options="nowrap"]
 ----
+  
   # If you don't already have a .dockercfg file, you can create a dockercfg secret directly by using:
   oc create secret docker-registry my-secret --docker-server=DOCKER_REGISTRY_SERVER --docker-username=DOCKER_USER --docker-password=DOCKER_PASSWORD --docker-email=DOCKER_EMAIL
 ----
@@ -1178,12 +1358,13 @@ Create a secret for use with a Docker registry.
 
 
 == oc create secret generic
-Create a secret from a local file, directory or literal value.
+Create a secret from a local file, directory or literal value
 
 ====
 
 [options="nowrap"]
 ----
+  
   # Create a new secret named my-secret with keys for each file in folder bar
   oc create secret generic my-secret --from-file=path/to/bar
   
@@ -1197,25 +1378,72 @@ Create a secret from a local file, directory or literal value.
 
 
 == oc create secret tls
-Create a TLS secret.
+Create a TLS secret
 
 ====
 
 [options="nowrap"]
 ----
+  
   # Create a new TLS secret named tls-secret with the given key pair:
   oc create secret tls tls-secret --cert=path/to/tls.cert --key=path/to/tls.key
 ----
 ====
 
 
-== oc create serviceaccount
-Create a service account with the specified name.
+== oc create service clusterip
+Create a clusterIP service.
 
 ====
 
 [options="nowrap"]
 ----
+  
+  # Create a new clusterIP service named my-cs
+  oc create service clusterip my-cs --tcp=5678:8080
+  
+  # Create a new clusterIP service named my-cs (in headless mode)
+  oc create service clusterip my-cs --clusterip="None"
+----
+====
+
+
+== oc create service loadbalancer
+Create a LoadBalancer service.
+
+====
+
+[options="nowrap"]
+----
+  
+  # Create a new nodeport service named my-lbs
+  oc create service loadbalancer my-lbs --tcp=5678:8080
+----
+====
+
+
+== oc create service nodeport
+Create a NodePort service.
+
+====
+
+[options="nowrap"]
+----
+  
+  # Create a new nodeport service named my-ns
+  oc create service nodeport my-ns --tcp=5678:8080
+----
+====
+
+
+== oc create serviceaccount
+Create a service account with the specified name
+
+====
+
+[options="nowrap"]
+----
+  
   # Create a new service account named my-service-account
   $ oc create serviceaccount my-service-account
 ----
@@ -1423,7 +1651,7 @@ Perform a direct Docker build
 
 
 == oc exec
-Execute a command in a container.
+Execute a command in a container
 
 ====
 
@@ -1439,7 +1667,7 @@ Execute a command in a container.
 
 
 == oc explain
-Documentation of resources.
+Documentation of resources
 
 ====
 
@@ -1538,6 +1766,19 @@ Display one or many resources
 
   # Return only the status value of the specified pod.
   oc get -o template pod redis-pod --template={{.currentState.status}}
+----
+====
+
+
+== oc idle
+Idle scalable resources
+
+====
+
+[options="nowrap"]
+----
+  # Idle the scalable controllers associated with the services listed in to-idle.txt
+  $ oc idle --resource-names-file to-idle.txt
 ----
 ====
 
@@ -1685,9 +1926,6 @@ Create a new application
   # List all local templates and image streams that can be used to create an app
   oc new-app --list
 
-  # Search all templates, image streams, and Docker images for the ones that match "ruby"
-  oc new-app --search ruby
-
   # Create an application based on the source code in the current git repository (with a public remote)
   # and a Docker image
   oc new-app . --docker-image=repo/langimage
@@ -1713,10 +1951,10 @@ Create a new application
   # Create an application based on a template file, explicitly setting a parameter value
   oc new-app --file=./example/myapp/template.json --param=MYSQL_USER=admin
 
-  # Search for "mysql" in all image repositories and stored templates
-  oc new-app --search mysql
+  # Search all templates, image streams, and Docker images for the ones that match "ruby"
+  oc new-app --search ruby
 
-  # Search for "ruby", but only in stored templates (--template, --image and --docker-image
+  # Search for "ruby", but only in stored templates (--template, --image-stream and --docker-image
   # can be used to filter search results)
   oc new-app --search --template=ruby
 
@@ -1775,8 +2013,25 @@ Request a new project
 ====
 
 
+== oc observe
+Observe changes to resources and react to them (experimental)
+
+====
+
+[options="nowrap"]
+----
+	# observe changes to services
+	oc observe services
+
+	# observe changes to services, including the clusterIP and invoke a script for each
+	oc observe services -a '{ .spec.clusterIP }' -- register_dns.sh
+
+----
+====
+
+
 == oc patch
-Update field(s) of a resource using strategic merge patch.
+Update field(s) of a resource using strategic merge patch
 
 ====
 
@@ -1789,23 +2044,23 @@ Update field(s) of a resource using strategic merge patch.
 
 
 == oc policy add-role-to-user
-Add users or serviceaccounts to a role in the current project
+Add a role to users or serviceaccounts for the current project
 
 ====
 
 [options="nowrap"]
 ----
-  # Add the 'view' role to user1 in the current project
+  # Add the 'view' role to user1 for the current project
   oc policy add-role-to-user view user1
 
-  # Add the 'edit' role to serviceaccount1 in the current project
+  # Add the 'edit' role to serviceaccount1 for the current project
   oc policy add-role-to-user edit -z serviceaccount1
 ----
 ====
 
 
 == oc port-forward
-Forward one or more local ports to a pod.
+Forward one or more local ports to a pod
 
 ====
 
@@ -1870,19 +2125,6 @@ Switch to another project
 ====
 
 
-== oc projects
-Display existing projects
-
-====
-
-[options="nowrap"]
-----
-  # Display the projects that currently exist
-  oc
-----
-====
-
-
 == oc proxy
 Run a proxy to the Kubernetes API server
 
@@ -1905,7 +2147,7 @@ Run a proxy to the Kubernetes API server
 
 
 == oc replace
-Replace a resource by filename or stdin.
+Replace a resource by filename or stdin
 
 ====
 
@@ -1946,7 +2188,7 @@ Revert part of an application back to a previous deployment
 
 
 == oc rollout history
-view rollout history
+View rollout history
 
 ====
 
@@ -1957,6 +2199,20 @@ view rollout history
 
   # View the details of deployment revision 3
   oc rollout history dc/nginx --revision=3
+----
+====
+
+
+== oc rollout latest
+Start a new rollout for a deployment config with the latest state from its triggers
+
+====
+
+[options="nowrap"]
+----
+  # Start a new rollout based on the latest images defined in the image change triggers.
+  oc rollout latest dc/nginx
+
 ----
 ====
 
@@ -1989,8 +2245,22 @@ Resume a paused resource
 ====
 
 
+== oc rollout status
+Watch rollout status until it's done
+
+====
+
+[options="nowrap"]
+----
+  # Watch the status of the latest rollout
+  oc rollout status dc/nginx
+
+----
+====
+
+
 == oc rollout undo
-undoes a previous rollout
+Undo a previous rollout
 
 ====
 
@@ -2046,7 +2316,7 @@ Copy files between local filesystem and a pod
 
 
 == oc run
-Run a particular image on the cluster.
+Run a particular image on the cluster
 
 ====
 
@@ -2067,6 +2337,13 @@ Run a particular image on the cluster.
 
   # Start a single instance of nginx and keep it in the foreground, don't restart it if it exits.
   oc run -i --tty nginx --image=nginx --restart=Never
+
+  # Start the nginx container using the default command, but use custom
+  # arguments (arg1 .. argN) for that command.
+  oc run nginx --image=nginx -- <arg1> <arg2> ... <argN>
+
+  # Start the nginx container using a different command and custom arguments
+  oc run nginx --image=nginx --command -- <cmd> <arg1> ... <argN>
 ----
 ====
 
@@ -2281,6 +2558,29 @@ Update a build hook on a build config
 ====
 
 
+== oc set build-secret
+Update a build secret on a build config
+
+====
+
+[options="nowrap"]
+----
+  # Clear push secret on a build config
+  oc set build-secret --push --remove bc/mybuild
+
+  # Set the pull secret on a build config
+  oc set build-secret --pull bc/mybuild mysecret
+
+  # Set the push and pull secret on a build config
+  oc set build-secret --push --pull bc/mybuild mysecret
+
+  # Set the source secret on a set of build configs matching a selector
+  oc set build-secret --source -l app=myapp gitsecret
+
+----
+====
+
+
 == oc set deployment-hook
 Update a deployment hook on a deployment config
 
@@ -2342,6 +2642,28 @@ Update environment variables on a pod template
 ====
 
 
+== oc set image
+Update image of a pod template
+
+====
+
+[options="nowrap"]
+----
+  # Set a deployment configs's nginx container image to 'nginx:1.9.1', and its busybox container image to 'busybox'.
+  oc set image dc/nginx busybox=busybox nginx=nginx:1.9.1
+
+  # Update all deployments' and rc's nginx container's image to 'nginx:1.9.1'
+  oc set image deployments,rc nginx=nginx:1.9.1 --all
+
+  # Update image of all containers of daemonset abc to 'nginx:1.9.1'
+  oc set image daemonset abc *=nginx:1.9.1
+
+  # Print result (in yaml format) of updating nginx container image from local file, without hitting the server
+  oc set image -f path/to/file.yaml nginx=nginx:1.9.1 --local -o yaml
+----
+====
+
+
 == oc set probe
 Update a probe on a pod template
 
@@ -2366,6 +2688,34 @@ Update a probe on a pod template
 
   # Set only the initial-delay-seconds field on all deployments
   oc set probe dc --all --readiness --initial-delay-seconds=30
+----
+====
+
+
+== oc set route-backends
+Update the backends for a route
+
+====
+
+[options="nowrap"]
+----
+  # Print the backends on the route 'web'
+  oc set route-backends web
+
+  # Set two backend services on route 'web' with 2/3rds of traffic going to 'a'
+  oc set route-backends web a=2 b=1
+
+  # Increase the traffic percentage going to b by 10% relative to a
+  oc set route-backends web --adjust b=+10%
+
+  # Set traffic percentage going to b to 10% of the traffic going to a
+  oc set route-backends web --adjust b=10%
+
+  # Set weight of b to 10
+  oc set route-backends web --adjust b=10
+
+  # Set the weight to all backends to zero
+  oc set route-backends web --zero
 ----
 ====
 

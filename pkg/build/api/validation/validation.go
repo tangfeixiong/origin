@@ -422,6 +422,7 @@ func validateOutput(output *buildapi.BuildOutput, fldPath *field.Path) field.Err
 	}
 
 	allErrs = append(allErrs, validateSecretRef(output.PushSecret, fldPath.Child("pushSecret"))...)
+	allErrs = append(allErrs, ValidateImageLabels(output.ImageLabels, fldPath.Child("imageLabels"))...)
 
 	return allErrs
 }
@@ -503,6 +504,7 @@ func validateSourceStrategy(strategy *buildapi.SourceBuildStrategy, fldPath *fie
 	allErrs = append(allErrs, validateFromImageReference(&strategy.From, fldPath.Child("from"))...)
 	allErrs = append(allErrs, validateSecretRef(strategy.PullSecret, fldPath.Child("pullSecret"))...)
 	allErrs = append(allErrs, ValidateStrategyEnv(strategy.Env, fldPath.Child("env"))...)
+	allErrs = append(allErrs, validateRuntimeImage(strategy, fldPath.Child("runtimeImage"))...)
 	return allErrs
 }
 
@@ -625,7 +627,7 @@ func ValidateBuildLogOptions(opts *buildapi.BuildLogOptions) field.ErrorList {
 	return allErrs
 }
 
-const cIdentifierErrorMsg string = `must be a C identifier (matching regex ` + kvalidation.CIdentifierFmt + `): e.g. "my_name" or "MyName"`
+var cIdentifierErrorMsg string = `must be a C identifier (mixed-case letters, numbers, and underscores): e.g. "my_name" or "MyName"`
 
 func ValidateStrategyEnv(vars []kapi.EnvVar, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
@@ -634,7 +636,7 @@ func ValidateStrategyEnv(vars []kapi.EnvVar, fldPath *field.Path) field.ErrorLis
 		idxPath := fldPath.Index(i)
 		if len(ev.Name) == 0 {
 			allErrs = append(allErrs, field.Required(idxPath.Child("name"), ""))
-		} else if !kvalidation.IsCIdentifier(ev.Name) {
+		} else if len(kvalidation.IsCIdentifier(ev.Name)) > 0 {
 			allErrs = append(allErrs, field.Invalid(idxPath.Child("name"), ev.Name, cIdentifierErrorMsg))
 		}
 		if ev.ValueFrom != nil {
@@ -650,4 +652,48 @@ func validatePostCommit(spec buildapi.BuildPostCommitSpec, fldPath *field.Path) 
 		allErrs = append(allErrs, field.Invalid(fldPath, spec, "cannot use command and script together"))
 	}
 	return allErrs
+}
+
+// validateRuntimeImage verifies that the runtimeImage field in
+// SourceBuildStrategy is not empty if it was specified and also checks to see
+// if the incremental build flag was specified, which is incompatible since we
+// can't have extended incremental builds.
+func validateRuntimeImage(sourceStrategy *buildapi.SourceBuildStrategy, fldPath *field.Path) (allErrs field.ErrorList) {
+	if sourceStrategy.RuntimeImage == nil {
+		return
+	}
+	if sourceStrategy.RuntimeImage.Name == "" {
+		return append(allErrs, field.Required(fldPath, "name"))
+	}
+
+	if sourceStrategy.Incremental != nil && *sourceStrategy.Incremental {
+		return append(allErrs, field.Invalid(fldPath, sourceStrategy.Incremental, "incremental cannot be set to true with extended builds"))
+	}
+	return
+}
+
+func ValidateImageLabels(labels []buildapi.ImageLabel, fldPath *field.Path) (allErrs field.ErrorList) {
+	for i, lbl := range labels {
+		idxPath := fldPath.Index(i)
+		if len(lbl.Name) == 0 {
+			allErrs = append(allErrs, field.Required(idxPath.Child("name"), ""))
+			continue
+		}
+		for _, msg := range kvalidation.IsConfigMapKey(lbl.Name) {
+			allErrs = append(allErrs, field.Invalid(idxPath.Child("name"), lbl.Name, msg))
+		}
+	}
+
+	// find duplicates
+	seen := make(map[string]bool)
+	for i, lbl := range labels {
+		idxPath := fldPath.Index(i)
+		if seen[lbl.Name] {
+			allErrs = append(allErrs, field.Invalid(idxPath.Child("name"), lbl.Name, "duplicate name"))
+			continue
+		}
+		seen[lbl.Name] = true
+	}
+
+	return
 }

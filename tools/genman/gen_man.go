@@ -36,7 +36,7 @@ import (
 
 func main() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Root command not specified (os | oadm | openshift).")
+		fmt.Fprintf(os.Stderr, "Root command not specified (oc | oadm | openshift).\n")
 		os.Exit(1)
 	}
 
@@ -94,6 +94,9 @@ func preamble(out *bytes.Buffer, cmdName, name, short, long string) {
 
 func printFlags(out *bytes.Buffer, flags *pflag.FlagSet) {
 	flags.VisitAll(func(flag *pflag.Flag) {
+		if flag.Hidden {
+			return
+		}
 		format := "**--%s**=%s\n\t%s\n\n"
 		if flag.Value.Type() == "string" {
 			// put quotes on the value

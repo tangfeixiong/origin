@@ -43,7 +43,9 @@ func (u *fakeUser) GetGroups() []string {
 }
 
 func (u *fakeUser) GetExtra() map[string][]string {
-	return map[string][]string{}
+	return map[string][]string{
+		authorizationapi.ScopesKey: {"a", "b"},
+	}
 }
 
 type fakeDefaultRegistry struct {
@@ -131,7 +133,7 @@ func TestDockerImageRepository(t *testing.T) {
 	}
 
 	for testName, test := range tests {
-		strategy := NewStrategy(&fakeDefaultRegistry{test.defaultRegistry}, &fakeSubjectAccessReviewRegistry{}, &testutil.FakeImageStreamLimitVerifier{})
+		strategy := NewStrategy(&fakeDefaultRegistry{test.defaultRegistry}, &fakeSubjectAccessReviewRegistry{}, &testutil.FakeImageStreamLimitVerifier{}, nil)
 		value := strategy.dockerImageRepository(test.stream)
 		if e, a := test.expected, value; e != a {
 			t.Errorf("%s: expected %q, got %q", testName, e, a)
@@ -311,11 +313,12 @@ func TestTagVerifier(t *testing.T) {
 			expectedSar := &authorizationapi.SubjectAccessReview{
 				Action: authorizationapi.Action{
 					Verb:         "get",
-					Resource:     "imagestreams",
+					Resource:     "imagestreams/layers",
 					ResourceName: "otherstream",
 				},
 				User:   "user",
 				Groups: sets.NewString("group1"),
+				Scopes: []string{"a", "b"},
 			}
 			if e, a := expectedSar, sar.request; !reflect.DeepEqual(e, a) {
 				t.Errorf("%s: unexpected SAR request: %s", name, diff.ObjectDiff(e, a))
@@ -363,7 +366,7 @@ func TestLimitVerifier(t *testing.T) {
 		name        string
 		isEvaluator func(string, *api.ImageStream) error
 		is          api.ImageStream
-		expected    field.ErrorList
+		expected    error
 	}{
 		{
 			name: "no limit",
@@ -439,9 +442,7 @@ func TestLimitVerifier(t *testing.T) {
 				},
 			},
 			isEvaluator: makeISEvaluator(1, 0),
-			expected: field.ErrorList{
-				field.Forbidden(field.NewPath("imageStream"), makeISForbiddenError("is", []kapi.ResourceName{api.ResourceImageStreamImages}).Error()),
-			},
+			expected:    makeISForbiddenError("is", []kapi.ResourceName{api.ResourceImageStreamImages}),
 		},
 
 		{
@@ -464,9 +465,7 @@ func TestLimitVerifier(t *testing.T) {
 				},
 			},
 			isEvaluator: makeISEvaluator(0, 0),
-			expected: field.ErrorList{
-				field.Forbidden(field.NewPath("imageStream"), makeISForbiddenError("is", []kapi.ResourceName{api.ResourceImageStreamTags}).Error()),
-			},
+			expected:    makeISForbiddenError("is", []kapi.ResourceName{api.ResourceImageStreamTags}),
 		},
 
 		{
@@ -501,9 +500,7 @@ func TestLimitVerifier(t *testing.T) {
 				},
 			},
 			isEvaluator: makeISEvaluator(0, 0),
-			expected: field.ErrorList{
-				field.Forbidden(field.NewPath("imageStream"), makeISForbiddenError("is", []kapi.ResourceName{api.ResourceImageStreamImages, api.ResourceImageStreamTags}).Error()),
-			},
+			expected:    makeISForbiddenError("is", []kapi.ResourceName{api.ResourceImageStreamImages, api.ResourceImageStreamTags}),
 		},
 	}
 
@@ -522,10 +519,15 @@ func TestLimitVerifier(t *testing.T) {
 		}
 
 		ctx := kapi.WithUser(kapi.NewDefaultContext(), &fakeUser{})
-		errList := s.Validate(ctx, &tc.is)
+		err := s.BeforeCreate(ctx, &tc.is)
+		if e, a := tc.expected, err; !reflect.DeepEqual(e, a) {
+			t.Errorf("%s: unexpected validation errors: %s", tc.name, diff.ObjectReflectDiff(e, a))
+		}
 
-		if e, a := tc.expected, errList; !reflect.DeepEqual(e, a) {
-			t.Errorf("%s: unexpected validation errors: %s", tc.name, diff.ObjectDiff(e, a))
+		// Update must fail the exact same way
+		err = s.BeforeUpdate(ctx, &tc.is, &api.ImageStream{})
+		if e, a := tc.expected, err; !reflect.DeepEqual(e, a) {
+			t.Errorf("%s: unexpected validation errors: %s", tc.name, diff.ObjectReflectDiff(e, a))
 		}
 	}
 }
@@ -1062,9 +1064,9 @@ func TestTagsChanged(t *testing.T) {
 		}
 
 		s := &Strategy{
-			defaultRegistry: &fakeDefaultRegistry{},
+			defaultRegistry:   &fakeDefaultRegistry{},
+			imageStreamGetter: &fakeImageStreamGetter{test.otherStream},
 		}
-		s.ImageStreamGetter = &fakeImageStreamGetter{test.otherStream}
 		err := s.tagsChanged(previousStream, stream)
 		if len(err) > 0 {
 			t.Errorf("%s: unable to process tags: %v", testName, err)

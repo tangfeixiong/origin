@@ -116,9 +116,9 @@ func (options *NodeOptions) Run(c *cobra.Command, args []string) {
 	if err := options.StartNode(); err != nil {
 		if kerrors.IsInvalid(err) {
 			if details := err.(*kerrors.StatusError).ErrStatus.Details; details != nil {
-				fmt.Fprintf(c.Out(), "Invalid %s %s\n", details.Kind, details.Name)
+				fmt.Fprintf(c.OutOrStderr(), "Invalid %s %s\n", details.Kind, details.Name)
 				for _, cause := range details.Causes {
-					fmt.Fprintf(c.Out(), "  %s: %s\n", cause.Field, cause.Message)
+					fmt.Fprintf(c.OutOrStderr(), "  %s: %s\n", cause.Field, cause.Message)
 				}
 				os.Exit(255)
 			}
@@ -199,7 +199,7 @@ func (o NodeOptions) RunNode() error {
 	validationResults := validation.ValidateNodeConfig(nodeConfig, nil)
 	if len(validationResults.Warnings) != 0 {
 		for _, warning := range validationResults.Warnings {
-			glog.Warningf("%v", warning)
+			glog.Warningf("Warning: %v, node start will continue.", warning)
 		}
 	}
 	if len(validationResults.Errors) != 0 {
@@ -286,8 +286,6 @@ func StartNode(nodeConfig configapi.NodeConfig, components *utilflags.ComponentF
 		return err
 	}
 
-	// In case of openshift network plugin, nodeConfig.networkPluginName is optional and is auto detected/finalized
-	// once we build kubernetes node config. So perform plugin name related check here.
 	if sdnplugin.IsOpenShiftNetworkPlugin(config.KubeletServer.NetworkPluginName) {
 		// TODO: SDN plugin depends on the Kubelet registering as a Node and doesn't retry cleanly,
 		// and Kubelet also can't start the PodSync loop until the SDN plugin has loaded.

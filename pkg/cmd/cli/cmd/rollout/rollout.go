@@ -12,7 +12,22 @@ import (
 
 const (
 	rolloutLong = `
-Manage deployments.
+Start a new rollout, view its status or history, rollback to a previous revision of your app
+
+This command allows you to control a deployment config. Each individual rollout is exposed
+as a replication controller, and the deployment process manages scaling down old replication
+controllers and scaling up new ones.
+
+There are several deployment strategies defined:
+
+* Rolling (default) - scales up the new replication controller in stages, gradually reducing the
+  number of old pods. If one of the new deployed pods never becomes "ready", the new rollout
+  will be rolled back (scaled down to zero). Use when your application can tolerate two versions
+  of code running at the same time (many web applications, scalable databases)
+* Recreate - scales the old replication controller down to zero, then scales the new replication
+  controller up to full. Use when your application cannot tolerate two versions of code running
+  at the same time
+* Custom - run your own deployment process inside a Docker container using your own scripts.
 `
 )
 
@@ -32,6 +47,8 @@ func NewCmdRollout(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.
 	cmd.AddCommand(NewCmdRolloutPause(fullName, f, out))
 	cmd.AddCommand(NewCmdRolloutResume(fullName, f, out))
 	cmd.AddCommand(NewCmdRolloutUndo(fullName, f, out))
+	cmd.AddCommand(NewCmdRolloutLatest(fullName, f, out))
+	cmd.AddCommand(NewCmdRolloutStatus(fullName, f, out))
 
 	return cmd
 }
@@ -56,6 +73,7 @@ func NewCmdRolloutHistory(fullName string, f *clientcmd.Factory, out io.Writer) 
 	cmd := rollout.NewCmdRolloutHistory(f.Factory, out)
 	cmd.Long = rolloutHistoryLong
 	cmd.Example = fmt.Sprintf(rolloutHistoryExample, fullName)
+	cmd.ValidArgs = append(cmd.ValidArgs, "deploymentconfig")
 	return cmd
 }
 
@@ -77,6 +95,7 @@ func NewCmdRolloutPause(fullName string, f *clientcmd.Factory, out io.Writer) *c
 	cmd := rollout.NewCmdRolloutPause(f.Factory, out)
 	cmd.Long = rolloutPauseLong
 	cmd.Example = fmt.Sprintf(rolloutPauseExample, fullName)
+	cmd.ValidArgs = append(cmd.ValidArgs, "deploymentconfig")
 	return cmd
 }
 
@@ -96,6 +115,7 @@ func NewCmdRolloutResume(fullName string, f *clientcmd.Factory, out io.Writer) *
 	cmd := rollout.NewCmdRolloutResume(f.Factory, out)
 	cmd.Long = rolloutResumeLong
 	cmd.Example = fmt.Sprintf(rolloutResumeExample, fullName)
+	cmd.ValidArgs = append(cmd.ValidArgs, "deploymentconfig")
 	return cmd
 }
 
@@ -132,5 +152,23 @@ func NewCmdRolloutUndo(fullName string, f *clientcmd.Factory, out io.Writer) *co
 	cmd := rollout.NewCmdRolloutUndo(f.Factory, out)
 	cmd.Long = rolloutUndoLong
 	cmd.Example = fmt.Sprintf(rolloutUndoExample, fullName)
+	cmd.ValidArgs = append(cmd.ValidArgs, "deploymentconfig")
+	return cmd
+}
+
+const (
+	rolloutStatusLong = `
+Watch the status of the latest rollout, until it's done.`
+
+	rolloutStatusExample = `  # Watch the status of the latest rollout
+  %[1]s rollout status dc/nginx
+`
+)
+
+// NewCmdRolloutStatus is a wrapper for the Kubernetes cli rollout status command
+func NewCmdRolloutStatus(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
+	cmd := rollout.NewCmdRolloutStatus(f.Factory, out)
+	cmd.Long = rolloutStatusLong
+	cmd.Example = fmt.Sprintf(rolloutStatusExample, fullName)
 	return cmd
 }

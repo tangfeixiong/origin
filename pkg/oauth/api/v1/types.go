@@ -63,6 +63,12 @@ type OAuthAuthorizeToken struct {
 	// UserUID is the unique UID associated with this token. UserUID and UserName must both match
 	// for this token to be valid.
 	UserUID string `json:"userUID,omitempty" protobuf:"bytes,8,opt,name=userUID"`
+
+	// CodeChallenge is the optional code_challenge associated with this authorization code, as described in rfc7636
+	CodeChallenge string `json:"codeChallenge,omitempty" protobuf:"bytes,9,opt,name=codeChallenge"`
+
+	// CodeChallengeMethod is the optional code_challenge_method associated with this authorization code, as described in rfc7636
+	CodeChallengeMethod string `json:"codeChallengeMethod,omitempty" protobuf:"bytes,10,opt,name=codeChallengeMethod"`
 }
 
 // +genclient=true
@@ -84,7 +90,7 @@ type OAuthClient struct {
 	RespondWithChallenges bool `json:"respondWithChallenges,omitempty" protobuf:"varint,4,opt,name=respondWithChallenges"`
 
 	// RedirectURIs is the valid redirection URIs associated with a client
-	RedirectURIs []string `json:"redirectURIs,omitempty" protobuf:"bytes,5,rep,name=redirectURIs"`
+	RedirectURIs []string `json:"redirectURIs,omitempty" patchStrategy:"merge" protobuf:"bytes,5,rep,name=redirectURIs"`
 
 	// GrantMethod determines how to handle grants for this client. If no method is provided, the
 	// cluster default grant handling method will be used. Valid grant handling methods are:

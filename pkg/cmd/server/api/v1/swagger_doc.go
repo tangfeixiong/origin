@@ -149,7 +149,7 @@ func (DNSConfig) SwaggerDoc() map[string]string {
 
 var map_DefaultAdmissionConfig = map[string]string{
 	"":        "DefaultAdmissionConfig can be used to enable or disable various admission plugins. When this type is present as the `configuration` object under `pluginConfig` and *if* the admission plugin supports it, this will cause an \"off by default\" admission plugin to be enabled",
-	"Disable": "Disable turns off an admission plugin that is enabled by default.",
+	"disable": "Disable turns off an admission plugin that is enabled by default.",
 }
 
 func (DefaultAdmissionConfig) SwaggerDoc() map[string]string {
@@ -307,12 +307,12 @@ func (ImagePolicyConfig) SwaggerDoc() map[string]string {
 }
 
 var map_JenkinsPipelineConfig = map[string]string{
-	"":                  "JenkinsPipelineConfig holds configuration for the Jenkins pipeline strategy",
-	"enabled":           "If the enabled flag is set, a Jenkins server will be spawned from the provided template when the first build config in the project with type JenkinsPipeline is created. When not specified this option defaults to true.",
-	"templateNamespace": "TemplateNamespace contains the namespace name where the Jenkins template is stored",
-	"templateName":      "TemplateName is the name of the default Jenkins template",
-	"serviceName":       "ServiceName is the name of the Jenkins service OpenShift uses to detect whether a Jenkins pipeline handler has already been installed in a project. This value *must* match a service name in the provided template.",
-	"parameters":        "Parameters specifies a set of optional parameters to the Jenkins template.",
+	"": "JenkinsPipelineConfig holds configuration for the Jenkins pipeline strategy",
+	"autoProvisionEnabled": "AutoProvisionEnabled determines whether a Jenkins server will be spawned from the provided template when the first build config in the project with type JenkinsPipeline is created. When not specified this option defaults to false.",
+	"templateNamespace":    "TemplateNamespace contains the namespace name where the Jenkins template is stored",
+	"templateName":         "TemplateName is the name of the default Jenkins template",
+	"serviceName":          "ServiceName is the name of the Jenkins service OpenShift uses to detect whether a Jenkins pipeline handler has already been installed in a project. This value *must* match a service name in the provided template.",
+	"parameters":           "Parameters specifies a set of optional parameters to the Jenkins template.",
 }
 
 func (JenkinsPipelineConfig) SwaggerDoc() map[string]string {
@@ -353,6 +353,7 @@ var map_KubernetesMasterConfig = map[string]string{
 	"admissionConfig":          "AdmissionConfig contains admission control plugin configuration.",
 	"apiServerArguments":       "APIServerArguments are key value pairs that will be passed directly to the Kube apiserver that match the apiservers's command line arguments.  These are not migrated, but if you reference a value that does not exist the server will not start. These values may override other settings in KubernetesMasterConfig which may cause invalid configurations.",
 	"controllerArguments":      "ControllerArguments are key value pairs that will be passed directly to the Kube controller manager that match the controller manager's command line arguments.  These are not migrated, but if you reference a value that does not exist the server will not start. These values may override other settings in KubernetesMasterConfig which may cause invalid configurations.",
+	"schedulerArguments":       "SchedulerArguments are key value pairs that will be passed directly to the Kube scheduler that match the scheduler's command line arguments.  These are not migrated, but if you reference a value that does not exist the server will not start. These values may override other settings in KubernetesMasterConfig which may cause invalid configurations.",
 }
 
 func (KubernetesMasterConfig) SwaggerDoc() map[string]string {
@@ -481,6 +482,7 @@ var map_MasterNetworkConfig = map[string]string{
 	"hostSubnetLength":       "HostSubnetLength is the number of bits to allocate to each host's subnet e.g. 8 would mean a /24 network on the host",
 	"serviceNetworkCIDR":     "ServiceNetwork is the CIDR string to specify the service networks",
 	"externalIPNetworkCIDRs": "ExternalIPNetworkCIDRs controls what values are acceptable for the service external IP field. If empty, no externalIP may be set. It may contain a list of CIDRs which are checked for access. If a CIDR is prefixed with !, IPs in that CIDR will be rejected. Rejections will be applied first, then the IP checked against one of the allowed CIDRs. You should ensure this range does not overlap with your nodes, pods, or service CIDRs for security reasons.",
+	"ingressIPNetworkCIDR":   "IngressIPNetworkCIDR controls the range to assign ingress ips from for services of type LoadBalancer on bare metal. If empty, ingress ips will not be assigned. It may contain a single CIDR that will be allocated from. For security reasons, you should ensure that this range does not overlap with the CIDRs reserved for external ips, nodes, pods, or services.",
 }
 
 func (MasterNetworkConfig) SwaggerDoc() map[string]string {
@@ -537,6 +539,7 @@ var map_NodeConfig = map[string]string{
 	"kubeletArguments":                "KubeletArguments are key value pairs that will be passed directly to the Kubelet that match the Kubelet's command line arguments.  These are not migrated or validated, so if you use them they may become invalid. These values override other settings in NodeConfig which may cause invalid configurations.",
 	"proxyArguments":                  "ProxyArguments are key value pairs that will be passed directly to the Proxy that match the Proxy's command line arguments.  These are not migrated or validated, so if you use them they may become invalid. These values override other settings in NodeConfig which may cause invalid configurations.",
 	"iptablesSyncPeriod":              "IPTablesSyncPeriod is how often iptable rules are refreshed",
+	"enableUnidling":                  "EnableUnidling controls whether or not the hybrid unidling proxy will be set up",
 	"volumeConfig":                    "VolumeConfig contains options for configuring volumes on the node.",
 }
 
@@ -546,7 +549,7 @@ func (NodeConfig) SwaggerDoc() map[string]string {
 
 var map_NodeNetworkConfig = map[string]string{
 	"":                  "NodeNetworkConfig provides network options for the node",
-	"networkPluginName": "NetworkPluginName is a string specifying the networking plugin Optional for OpenShift network plugin, node will auto detect network plugin configured by OpenShift master.",
+	"networkPluginName": "NetworkPluginName is a string specifying the networking plugin",
 	"mtu":               "Maximum transmission unit for the network packets",
 }
 

@@ -37,9 +37,10 @@ func adjustCmdExamples(cmd *cobra.Command, parentName string, name string) {
 const (
 	getLong = `Display one or many resources
 
-Possible resources include builds, buildConfigs, services, pods, etc.
-Some resources may omit advanced details that you can see with '-o wide'.
-If you want an even more detailed view, use '%[1]s describe'.`
+Possible resources include builds, buildConfigs, services, pods, etc. To see a
+list of common resources, use '%[1]s get'. Some resources may omit
+advanced details that you can see with '-o wide'.  If you want an even more
+detailed view, use '%[1]s describe'.`
 
 	getExample = `  # List all pods in ps output format.
   %[1]s get pods
@@ -58,8 +59,8 @@ If you want an even more detailed view, use '%[1]s describe'.`
 )
 
 // NewCmdGet is a wrapper for the Kubernetes cli get command
-func NewCmdGet(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
-	cmd := kcmd.NewCmdGet(f.Factory, out)
+func NewCmdGet(fullName string, f *clientcmd.Factory, out, errOut io.Writer) *cobra.Command {
+	cmd := kcmd.NewCmdGet(f.Factory, out, errOut)
 	cmd.Long = fmt.Sprintf(getLong, fullName)
 	cmd.Example = fmt.Sprintf(getExample, fullName)
 	cmd.SuggestFor = []string{"list"}
@@ -191,16 +192,18 @@ completion of %s commands.`
   %s completion bash > bash_completion.sh
   source bash_completion.sh
 
-  # The above example depends on the bash-completion
-framework. It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
+  # The above example depends on the bash-completion framework.
+  It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
 
   brew install bash-completion
   source $(brew --prefix)/etc/bash_completion
   %s completion bash > bash_completion.sh
   source bash_completion.sh
 
-  # In zsh, the following will load openshift cli zsh completion:
-  source <(%s completion zsh)`
+  # In zsh*, the following will load openshift cli zsh completion:
+  source <(%s completion zsh)
+
+  * zsh completions are only supported in versions of zsh >= 5.2`
 )
 
 func NewCmdCompletion(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
@@ -275,8 +278,8 @@ given resource.`
 )
 
 // NewCmdDescribe is a wrapper for the Kubernetes cli describe command
-func NewCmdDescribe(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
-	cmd := kcmd.NewCmdDescribe(f.Factory, out)
+func NewCmdDescribe(fullName string, f *clientcmd.Factory, out, errOut io.Writer) *cobra.Command {
+	cmd := kcmd.NewCmdDescribe(f.Factory, out, errOut)
 	cmd.Long = describeLong
 	cmd.Example = fmt.Sprintf(describeExample, fullName)
 	cmd.ValidArgs = describe.DescribableResources()
@@ -334,7 +337,7 @@ func NewCmdScale(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Co
 	cmd.Short = "Change the number of pods in a deployment"
 	cmd.Long = scaleLong
 	cmd.Example = fmt.Sprintf(scaleExample, fullName)
-	cmd.ValidArgs = []string{"deploymentconfig", "job", "replicationcontroller"}
+	cmd.ValidArgs = append(cmd.ValidArgs, "deploymentconfig")
 	return cmd
 }
 
@@ -355,9 +358,10 @@ increase or decrease number of pods deployed within the system as needed.`
 // NewCmdAutoscale is a wrapper for the Kubernetes cli autoscale command
 func NewCmdAutoscale(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
 	cmd := kcmd.NewCmdAutoscale(f.Factory, out)
-	cmd.Short = "Autoscale a deployment config or replication controller"
+	cmd.Short = "Autoscale a deployment config, deployment, replication controller, or replica set"
 	cmd.Long = autoScaleLong
 	cmd.Example = fmt.Sprintf(autoScaleExample, fullName)
+	cmd.ValidArgs = append(cmd.ValidArgs, "deploymentconfig")
 	return cmd
 }
 
@@ -382,16 +386,14 @@ foreground for an interactive container execution.  You may pass 'run/v1' to
   %[1]s run nginx --image=nginx --overrides='{ "apiVersion": "v1", "spec": { ... } }'
 
   # Start a single instance of nginx and keep it in the foreground, don't restart it if it exits.
-  %[1]s run -i --tty nginx --image=nginx --restart=Never`
+  %[1]s run -i --tty nginx --image=nginx --restart=Never
 
-	// TODO: uncomment these when arguments are delivered upstream
+  # Start the nginx container using the default command, but use custom
+  # arguments (arg1 .. argN) for that command.
+  %[1]s run nginx --image=nginx -- <arg1> <arg2> ... <argN>
 
-	// Start the nginx container using the default command, but use custom
-	// arguments (arg1 .. argN) for that command.
-	//%[1]s run nginx --image=nginx -- <arg1> <arg2> ... <argN>
-
-	// Start the nginx container using a different command and custom arguments
-	//%[1]s run nginx --image=nginx --command -- <cmd> <arg1> ... <argN>`
+  # Start the nginx container using a different command and custom arguments
+  %[1]s run nginx --image=nginx --command -- <cmd> <arg1> ... <argN>`
 )
 
 // NewCmdRun is a wrapper for the Kubernetes cli run command
@@ -543,8 +545,8 @@ resourcequotas (quota), namespaces (ns) or endpoints (ep).`
 )
 
 // NewCmdExplain is a wrapper for the Kubernetes cli explain command
-func NewCmdExplain(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
-	cmd := kcmd.NewCmdExplain(f.Factory, out)
+func NewCmdExplain(fullName string, f *clientcmd.Factory, out, errOut io.Writer) *cobra.Command {
+	cmd := kcmd.NewCmdExplain(f.Factory, out, errOut)
 	cmd.Long = explainLong
 	cmd.Example = fmt.Sprintf(explainExample, fullName)
 	return cmd

@@ -1,4 +1,4 @@
-// Copyright 2015 CoreOS, Inc.
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import (
 
 const (
 	peerMembersPrefix = "/members"
-	leasesPrefix      = "/leases"
 )
 
 // NewPeerHandler generates an http.Handler to handle etcd peer requests.
@@ -49,7 +48,8 @@ func newPeerHandler(cluster api.Cluster, raftHandler http.Handler, leaseHandler 
 	mux.Handle(rafthttp.RaftPrefix+"/", raftHandler)
 	mux.Handle(peerMembersPrefix, mh)
 	if leaseHandler != nil {
-		mux.Handle(leasesPrefix, leaseHandler)
+		mux.Handle(leasehttp.LeasePrefix, leaseHandler)
+		mux.Handle(leasehttp.LeaseInternalPrefix, leaseHandler)
 	}
 	mux.HandleFunc(versionPath, versionHandler(cluster, serveVersion))
 	return mux

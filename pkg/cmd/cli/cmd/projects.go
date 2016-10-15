@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"k8s.io/kubernetes/pkg/client/restclient"
+	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -22,6 +23,7 @@ type ProjectsOptions struct {
 	Config       clientcmdapi.Config
 	ClientConfig *restclient.Config
 	Client       *client.Client
+	KubeClient   kclient.Interface
 	Out          io.Writer
 	PathOptions  *kclientcmd.PathOptions
 
@@ -50,9 +52,6 @@ Display information about the current active project and existing projects on th
 
 For advanced configuration, or to manage the contents of your config file, use the 'config'
 command.`
-
-	projectsExample = `  # Display the projects that currently exist
-  %[1]s`
 )
 
 // NewCmdProjects implements the OpenShift cli rollback command
@@ -60,10 +59,9 @@ func NewCmdProjects(fullName string, f *clientcmd.Factory, out io.Writer) *cobra
 	options := &ProjectsOptions{}
 
 	cmd := &cobra.Command{
-		Use:     "projects",
-		Short:   "Display existing projects",
-		Long:    projectsLong,
-		Example: fmt.Sprintf(projectsExample, fullName),
+		Use:   "projects",
+		Short: "Display existing projects",
+		Long:  projectsLong,
 		Run: func(cmd *cobra.Command, args []string) {
 			options.PathOptions = cliconfig.NewPathOptions(cmd)
 
@@ -99,7 +97,7 @@ func (o *ProjectsOptions) Complete(f *clientcmd.Factory, args []string, commandN
 		return err
 	}
 
-	o.Client, _, err = f.Clients()
+	o.Client, o.KubeClient, err = f.Clients()
 	if err != nil {
 		return err
 	}
@@ -115,8 +113,11 @@ func (o ProjectsOptions) RunProjects() error {
 	clientCfg := o.ClientConfig
 	out := o.Out
 
+	var currentProject string
 	currentContext := config.Contexts[config.CurrentContext]
-	currentProject := currentContext.Namespace
+	if currentContext != nil {
+		currentProject = currentContext.Namespace
+	}
 
 	var currentProjectExists bool
 	var currentProjectErr error
@@ -124,15 +125,18 @@ func (o ProjectsOptions) RunProjects() error {
 	client := o.Client
 
 	if len(currentProject) > 0 {
-		if _, currentProjectErr := client.Projects().Get(currentProject); currentProjectErr == nil {
+		if currentProjectErr := confirmProjectAccess(currentProject, o.Client, o.KubeClient); currentProjectErr == nil {
 			currentProjectExists = true
 		}
 	}
 
-	defaultContextName := cliconfig.GetContextNickname(currentContext.Namespace, currentContext.Cluster, currentContext.AuthInfo)
+	var defaultContextName string
+	if currentContext != nil {
+		defaultContextName = cliconfig.GetContextNickname(currentContext.Namespace, currentContext.Cluster, currentContext.AuthInfo)
+	}
 
 	var msg string
-	projects, err := getProjects(client)
+	projects, err := getProjects(client, o.KubeClient)
 	if err == nil {
 		switch len(projects) {
 		case 0:
@@ -180,7 +184,7 @@ func (o ProjectsOptions) RunProjects() error {
 		if len(projects) > 0 && !o.DisplayShort {
 			if !currentProjectExists {
 				if clientcmd.IsForbidden(currentProjectErr) {
-					fmt.Printf("you do not have rights to view project %q. Please switch to an existing one.", currentProject)
+					fmt.Printf("You do not have rights to view project %q. Please switch to an existing one.\n", currentProject)
 				}
 				return currentProjectErr
 			}

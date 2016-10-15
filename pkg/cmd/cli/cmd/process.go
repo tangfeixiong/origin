@@ -80,7 +80,7 @@ func NewCmdProcess(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.
 	return cmd
 }
 
-// RunProject contains all the necessary functionality for the OpenShift cli process command
+// RunProcess contains all the necessary functionality for the OpenShift cli process command
 func RunProcess(f *clientcmd.Factory, out io.Writer, cmd *cobra.Command, args []string) error {
 	templateName, valueArgs := "", []string{}
 	for _, s := range args {
@@ -196,8 +196,6 @@ func RunProcess(f *clientcmd.Factory, out io.Writer, cmd *cobra.Command, args []
 		}
 	}
 
-	outputFormat := kcmdutil.GetFlagString(cmd, "output")
-
 	if len(infos) > 1 {
 		// in order to run validation on the input given to us by a user, we only support the processing
 		// of one template in a list. For instance, we want to be able to fail when a user does not give
@@ -253,6 +251,7 @@ func RunProcess(f *clientcmd.Factory, out io.Writer, cmd *cobra.Command, args []
 		return fmt.Errorf("error processing the template %q: %v\n", obj.Name, err)
 	}
 
+	outputFormat := kcmdutil.GetFlagString(cmd, "output")
 	if outputFormat == "describe" {
 		if s, err := (&describe.TemplateDescriber{
 			MetadataAccessor: meta.NewAccessor(),
@@ -267,13 +266,7 @@ func RunProcess(f *clientcmd.Factory, out io.Writer, cmd *cobra.Command, args []
 	}
 	objects = append(objects, resultObj.Objects...)
 
-	// Do not print the processed templates when asked to only show parameters or
-	// describe.
-	if kcmdutil.GetFlagBool(cmd, "parameters") || outputFormat == "describe" {
-		return nil
-	}
-
-	p, _, err := kubectl.GetPrinter(outputFormat, "")
+	p, _, err := kubectl.GetPrinter(outputFormat, "", false)
 	if err != nil {
 		return err
 	}
@@ -302,16 +295,16 @@ func RunProcess(f *clientcmd.Factory, out io.Writer, cmd *cobra.Command, args []
 func injectUserVars(values []string, t *templateapi.Template) []error {
 	var errors []error
 	for _, keypair := range values {
-		p := strings.Split(keypair, "=")
+		p := strings.SplitN(keypair, "=", 2)
 		if len(p) != 2 {
 			errors = append(errors, fmt.Errorf("invalid parameter assignment in %q: %q\n", t.Name, keypair))
-		}
-		if v := template.GetParameterByName(t, p[0]); v != nil {
-			v.Value = p[1]
-			v.Generate = ""
-			template.AddParameter(t, *v)
 		} else {
-			errors = append(errors, fmt.Errorf("unknown parameter name %q\n", p[0]))
+			if v := template.GetParameterByName(t, p[0]); v != nil {
+				v.Value = p[1]
+				v.Generate = ""
+			} else {
+				errors = append(errors, fmt.Errorf("unknown parameter name %q\n", p[0]))
+			}
 		}
 	}
 	return errors

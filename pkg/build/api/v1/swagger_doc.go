@@ -42,7 +42,7 @@ func (Build) SwaggerDoc() map[string]string {
 }
 
 var map_BuildConfig = map[string]string{
-	"":         "BuildConfig is a template which can be used to create new builds.",
+	"":         "Build configurations define a build process for new Docker images. There are three types of builds possible - a Docker build using a Dockerfile, a Source-to-Image build that uses a specially prepared base image that accepts source code that it can make runnable, and a custom build that can run // arbitrary Docker images as a base and accept the build parameters. Builds run on the cluster and on completion are pushed to the Docker registry specified in the \"output\" section. A build can be triggered via a webhook, when the base image changes, or when a user manually requests a new build be // created.\n\nEach build created by a build configuration is numbered and refers back to its parent configuration. Multiple builds can be triggered at once. Builds that do not have \"output\" set can be used to test code or run a verification build.",
 	"metadata": "metadata for BuildConfig.",
 	"spec":     "spec holds all the input necessary to produce a new build, and the conditions when to trigger them.",
 	"status":   "status holds any relevant information about a build config",
@@ -118,9 +118,10 @@ func (BuildLogOptions) SwaggerDoc() map[string]string {
 }
 
 var map_BuildOutput = map[string]string{
-	"":           "BuildOutput is input to a build strategy and describes the Docker image that the strategy should produce.",
-	"to":         "to defines an optional location to push the output of this build to. Kind must be one of 'ImageStreamTag' or 'DockerImage'. This value will be used to look up a Docker image repository to push to. In the case of an ImageStreamTag, the ImageStreamTag will be looked for in the namespace of the build unless Namespace is specified.",
-	"pushSecret": "PushSecret is the name of a Secret that would be used for setting up the authentication for executing the Docker push to authentication enabled Docker Registry (or Docker Hub).",
+	"":            "BuildOutput is input to a build strategy and describes the Docker image that the strategy should produce.",
+	"to":          "to defines an optional location to push the output of this build to. Kind must be one of 'ImageStreamTag' or 'DockerImage'. This value will be used to look up a Docker image repository to push to. In the case of an ImageStreamTag, the ImageStreamTag will be looked for in the namespace of the build unless Namespace is specified.",
+	"pushSecret":  "PushSecret is the name of a Secret that would be used for setting up the authentication for executing the Docker push to authentication enabled Docker Registry (or Docker Hub).",
+	"imageLabels": "imageLabels define a list of labels that are applied to the resulting image. If there are multiple labels with the same name then the last one in the list is used.",
 }
 
 func (BuildOutput) SwaggerDoc() map[string]string {
@@ -202,7 +203,7 @@ var map_BuildStrategy = map[string]string{
 	"dockerStrategy":          "dockerStrategy holds the parameters to the Docker build strategy.",
 	"sourceStrategy":          "sourceStrategy holds the parameters to the Source build strategy.",
 	"customStrategy":          "customStrategy holds the parameters to the Custom build strategy",
-	"jenkinsPipelineStrategy": "JenkinsPipelineStrategy holds the parameters to the Jenkins Pipeline build strategy. This strategy is experimental.",
+	"jenkinsPipelineStrategy": "JenkinsPipelineStrategy holds the parameters to the Jenkins Pipeline build strategy. This strategy is in tech preview.",
 }
 
 func (BuildStrategy) SwaggerDoc() map[string]string {
@@ -300,11 +301,9 @@ func (GenericWebHookEvent) SwaggerDoc() map[string]string {
 }
 
 var map_GitBuildSource = map[string]string{
-	"":           "GitBuildSource defines the parameters of a Git SCM",
-	"uri":        "uri points to the source that will be built. The structure of the source will depend on the type of build to run",
-	"ref":        "ref is the branch/tag/ref to build.",
-	"httpProxy":  "httpProxy is a proxy used to reach the git repository over http",
-	"httpsProxy": "httpsProxy is a proxy used to reach the git repository over https",
+	"":    "GitBuildSource defines the parameters of a Git SCM",
+	"uri": "uri points to the source that will be built. The structure of the source will depend on the type of build to run",
+	"ref": "ref is the branch/tag/ref to build.",
 }
 
 func (GitBuildSource) SwaggerDoc() map[string]string {
@@ -361,8 +360,18 @@ func (ImageChangeTrigger) SwaggerDoc() map[string]string {
 	return map_ImageChangeTrigger
 }
 
+var map_ImageLabel = map[string]string{
+	"":      "ImageLabel represents a label applied to the resulting image.",
+	"name":  "name defines the name of the label. It must have non-zero length.",
+	"value": "value defines the literal value of the label.",
+}
+
+func (ImageLabel) SwaggerDoc() map[string]string {
+	return map_ImageLabel
+}
+
 var map_ImageSource = map[string]string{
-	"":           "ImageSource describes an image that is used as source for the build",
+	"":           "ImageSource is used to describe build source that will be extracted from an image. A reference of type ImageStreamTag, ImageStreamImage or DockerImage may be used. A pull secret can be specified to pull the image from an external registry or override the default service account secret if pulling from the internal registry. A list of paths to copy from the image and their respective destination within the build directory must be specified in the paths array.",
 	"from":       "from is a reference to an ImageStreamTag, ImageStreamImage, or DockerImage to copy source from.",
 	"paths":      "paths is a list of source and destination paths to copy from the image.",
 	"pullSecret": "pullSecret is a reference to a secret to be used to pull the image from a registry If the image is pulled from the OpenShift registry, this field does not need to be set.",
@@ -383,13 +392,24 @@ func (ImageSourcePath) SwaggerDoc() map[string]string {
 }
 
 var map_JenkinsPipelineBuildStrategy = map[string]string{
-	"":                "JenkinsPipelineBuildStrategy holds parameters specific to a Jenkins Pipeline build. This strategy is experimental.",
+	"":                "JenkinsPipelineBuildStrategy holds parameters specific to a Jenkins Pipeline build. This strategy is in tech preview.",
 	"jenkinsfilePath": "JenkinsfilePath is the optional path of the Jenkinsfile that will be used to configure the pipeline relative to the root of the context (contextDir). If both JenkinsfilePath & Jenkinsfile are both not specified, this defaults to Jenkinsfile in the root of the specified contextDir.",
 	"jenkinsfile":     "Jenkinsfile defines the optional raw contents of a Jenkinsfile which defines a Jenkins pipeline build.",
 }
 
 func (JenkinsPipelineBuildStrategy) SwaggerDoc() map[string]string {
 	return map_JenkinsPipelineBuildStrategy
+}
+
+var map_ProxyConfig = map[string]string{
+	"":           "ProxyConfig defines what proxies to use for an operation",
+	"httpProxy":  "httpProxy is a proxy used to reach the git repository over http",
+	"httpsProxy": "httpsProxy is a proxy used to reach the git repository over https",
+	"noProxy":    "noProxy is the list of domains for which the proxy should not be used",
+}
+
+func (ProxyConfig) SwaggerDoc() map[string]string {
+	return map_ProxyConfig
 }
 
 var map_SecretBuildSource = map[string]string{
@@ -413,13 +433,15 @@ func (SecretSpec) SwaggerDoc() map[string]string {
 }
 
 var map_SourceBuildStrategy = map[string]string{
-	"":            "SourceBuildStrategy defines input parameters specific to an Source build.",
-	"from":        "from is reference to an DockerImage, ImageStreamTag, or ImageStreamImage from which the docker image should be pulled",
-	"pullSecret":  "pullSecret is the name of a Secret that would be used for setting up the authentication for pulling the Docker images from the private Docker registries",
-	"env":         "env contains additional environment variables you want to pass into a builder container",
-	"scripts":     "scripts is the location of Source scripts",
-	"incremental": "incremental flag forces the Source build to do incremental builds if true.",
-	"forcePull":   "forcePull describes if the builder should pull the images from registry prior to building.",
+	"":                 "SourceBuildStrategy defines input parameters specific to an Source build.",
+	"from":             "from is reference to an DockerImage, ImageStreamTag, or ImageStreamImage from which the docker image should be pulled",
+	"pullSecret":       "pullSecret is the name of a Secret that would be used for setting up the authentication for pulling the Docker images from the private Docker registries",
+	"env":              "env contains additional environment variables you want to pass into a builder container",
+	"scripts":          "scripts is the location of Source scripts",
+	"incremental":      "incremental flag forces the Source build to do incremental builds if true.",
+	"forcePull":        "forcePull describes if the builder should pull the images from registry prior to building.",
+	"runtimeImage":     "runtimeImage is an optional image that is used to run an application without unneeded dependencies installed. The building of the application is still done in the builder image but, post build, you can copy the needed artifacts in the runtime image for use. This field and the feature it enables are in tech preview.",
+	"runtimeArtifacts": "runtimeArtifacts specifies a list of source/destination pairs that will be copied from the builder to the runtime image. sourcePath can be a file or directory. destinationDir must be a directory. destinationDir can also be empty or equal to \".\", in this case it just refers to the root of WORKDIR. This field and the feature it enables are in tech preview.",
 }
 
 func (SourceBuildStrategy) SwaggerDoc() map[string]string {

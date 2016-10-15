@@ -7,15 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/pkg/parsers"
 	docker "github.com/fsouza/go-dockerclient"
 	"k8s.io/kubernetes/pkg/util/interrupt"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 
-	s2iapi "github.com/openshift/source-to-image/pkg/api"
 	"github.com/openshift/source-to-image/pkg/tar"
 
-	"github.com/openshift/origin/pkg/util/docker/dockerfile/builder/imageprogress"
+	"github.com/openshift/imagebuilder/imageprogress"
 )
 
 var (
@@ -48,6 +46,26 @@ type DockerClient interface {
 	WaitContainer(id string) (int, error)
 	Logs(opts docker.LogsOptions) error
 	TagImage(name string, opts docker.TagImageOptions) error
+}
+
+func pullImage(client DockerClient, name string, authConfig docker.AuthConfiguration) error {
+	logProgress := func(s string) {
+		glog.V(0).Infof("%s", s)
+	}
+	opts := docker.PullImageOptions{
+		Repository:    name,
+		OutputStream:  imageprogress.NewPullWriter(logProgress),
+		RawJSONStream: true,
+	}
+	if glog.Is(5) {
+		opts.OutputStream = os.Stderr
+		opts.RawJSONStream = false
+	}
+	err := client.PullImage(opts, authConfig)
+	if err == nil {
+		return nil
+	}
+	return err
 }
 
 // pushImage pushes a docker image to the registry specified in its tag.
@@ -101,8 +119,11 @@ func removeImage(client DockerClient, name string) error {
 }
 
 // buildImage invokes a docker build on a particular directory
-func buildImage(client DockerClient, dir string, dockerfilePath string, noCache bool, tag string, tar tar.Tar, pullAuth *docker.AuthConfigurations, forcePull bool, cgLimits *s2iapi.CGroupLimits) error {
+func buildImage(client DockerClient, dir string, tar tar.Tar, opts *docker.BuildImageOptions) error {
 	// TODO: be able to pass a stream directly to the Docker build to avoid the double temp hit
+	if opts == nil {
+		return fmt.Errorf("%s", "build image options nil")
+	}
 	r, w := io.Pipe()
 	go func() {
 		defer utilruntime.HandleCrash()
@@ -112,34 +133,16 @@ func buildImage(client DockerClient, dir string, dockerfilePath string, noCache 
 		}
 	}()
 	defer w.Close()
-	glog.V(5).Infof("Invoking Docker build to create %q", tag)
-	opts := docker.BuildImageOptions{
-		Name:           tag,
-		RmTmpContainer: true,
-		OutputStream:   os.Stdout,
-		InputStream:    r,
-		Dockerfile:     dockerfilePath,
-		NoCache:        noCache,
-		Pull:           forcePull,
-	}
-	if cgLimits != nil {
-		opts.Memory = cgLimits.MemoryLimitBytes
-		opts.Memswap = cgLimits.MemorySwap
-		opts.CPUShares = cgLimits.CPUShares
-		opts.CPUPeriod = cgLimits.CPUPeriod
-		opts.CPUQuota = cgLimits.CPUQuota
-	}
-	if pullAuth != nil {
-		opts.AuthConfigs = *pullAuth
-	}
-	return client.BuildImage(opts)
+	opts.InputStream = r
+	glog.V(5).Infof("Invoking Docker build to create %q", opts.Name)
+	return client.BuildImage(*opts)
 }
 
 // tagImage uses the dockerClient to tag a Docker image with name. It is a
 // helper to facilitate the usage of dockerClient.TagImage, because the former
 // requires the name to be split into more explicit parts.
 func tagImage(dockerClient DockerClient, image, name string) error {
-	repo, tag := parsers.ParseRepositoryTag(name)
+	repo, tag := docker.ParseRepositoryTag(name)
 	return dockerClient.TagImage(image, docker.TagImageOptions{
 		Repo: repo,
 		Tag:  tag,
@@ -161,7 +164,7 @@ func dockerRun(client DockerClient, createOpts docker.CreateContainerOptions, lo
 		return fmt.Errorf("create container %q: %v", createOpts.Name, err)
 	}
 
-	containerName := containerNameOrID(c)
+	containerName := getContainerNameOrID(c)
 
 	removeContainer := func() {
 		glog.V(4).Infof("Removing container %q ...", containerName)
@@ -201,7 +204,7 @@ func dockerRun(client DockerClient, createOpts docker.CreateContainerOptions, lo
 	return interrupt.New(nil, removeContainer).Run(startWaitContainer)
 }
 
-func containerNameOrID(c *docker.Container) string {
+func getContainerNameOrID(c *docker.Container) string {
 	if c.Name != "" {
 		return c.Name
 	}

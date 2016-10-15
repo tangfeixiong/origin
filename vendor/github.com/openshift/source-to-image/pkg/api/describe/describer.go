@@ -10,6 +10,7 @@ import (
 
 	"github.com/openshift/source-to-image/pkg/api"
 	"github.com/openshift/source-to-image/pkg/build"
+	"github.com/openshift/source-to-image/pkg/docker"
 )
 
 // Config returns the Config object in nice readable, tabbed format.
@@ -35,6 +36,7 @@ func DescribeConfig(config *api.Config) string {
 		if len(config.EnvironmentFile) > 0 {
 			fmt.Fprintf(out, "Environment File:\t%s\n", config.EnvironmentFile)
 		}
+		printLabels(out, config.Labels)
 		fmt.Fprintf(out, "Incremental Build:\t%s\n", printBool(config.Incremental))
 		if config.Incremental {
 			fmt.Fprintf(out, "Incremental Image Pull User:\t%s\n", config.IncrementalAuthentication.Username)
@@ -97,16 +99,21 @@ func describeBuilderImage(config *api.Config, image string, out io.Writer) {
 		Tag:                config.Tag,
 		IncrementalAuthentication: config.IncrementalAuthentication,
 	}
-	build.GenerateConfigFromLabels(c)
-	if len(c.DisplayName) > 0 {
-		fmt.Fprintf(out, "Builder Name:\t%s\n", c.DisplayName)
-	}
-	fmt.Fprintf(out, "Builder Image:\t%s\n", config.BuilderImage)
-	if len(c.BuilderImageVersion) > 0 {
-		fmt.Fprintf(out, "Builder Image Version:\t%s\n", c.BuilderImageVersion)
-	}
-	if len(c.BuilderBaseImageVersion) > 0 {
-		fmt.Fprintf(out, "Builder Base Version:\t%s\n", c.BuilderBaseImageVersion)
+	pr, err := docker.GetBuilderImage(c)
+	if err == nil {
+		build.GenerateConfigFromLabels(c, pr)
+		if len(c.DisplayName) > 0 {
+			fmt.Fprintf(out, "Builder Name:\t%s\n", c.DisplayName)
+		}
+		fmt.Fprintf(out, "Builder Image:\t%s\n", config.BuilderImage)
+		if len(c.BuilderImageVersion) > 0 {
+			fmt.Fprintf(out, "Builder Image Version:\t%s\n", c.BuilderImageVersion)
+		}
+		if len(c.BuilderBaseImageVersion) > 0 {
+			fmt.Fprintf(out, "Builder Base Version:\t%s\n", c.BuilderBaseImageVersion)
+		}
+	} else {
+		fmt.Fprintf(out, "Error describing image:\t%s\n", err.Error())
 	}
 }
 
@@ -133,6 +140,14 @@ func printEnv(out io.Writer, env api.EnvironmentList) {
 		result = append(result, strings.Join([]string{e.Name, e.Value}, "="))
 	}
 	fmt.Fprintf(out, "Environment:\t%s\n", strings.Join(result, ","))
+}
+
+func printLabels(out io.Writer, labels map[string]string) {
+	result := []string{}
+	for k, v := range labels {
+		result = append(result, fmt.Sprintf("%s=%q", k, v))
+	}
+	fmt.Fprintf(out, "Labels:\t%s\n", strings.Join(result, ","))
 }
 
 func printBool(b bool) string {

@@ -23,6 +23,10 @@ created by users and keeps a local router configuration up to date with those ch
 You may customize the router by providing your own \-\-template and \-\-reload scripts.
 
 .PP
+The router must have a default certificate in pem format. You may provide it via \-\-default\-cert otherwise
+one is automatically created.
+
+.PP
 You may restrict the set of routes exposed to a single project (with \-\-namespace), projects your client has
 access to with a set of labels (\-\-project\-labels), namespaces matching a label (\-\-namespace\-labels), or all
 namespaces (no argument). You can limit the routes to those matching a \-\-labels or \-\-fields selector. Note
@@ -36,19 +40,19 @@ that you must have a cluster\-wide administrative role to view all namespaces.
 
 .PP
 \fB\-\-as\fP=""
-    Username to impersonate for the operation.
+    Username to impersonate for the operation
 
 .PP
 \fB\-\-certificate\-authority\fP=""
-    Path to a cert. file for the certificate authority.
+    Path to a cert. file for the certificate authority
 
 .PP
 \fB\-\-client\-certificate\fP=""
-    Path to a client certificate file for TLS.
+    Path to a client certificate file for TLS
 
 .PP
 \fB\-\-client\-key\fP=""
-    Path to a client key file for TLS.
+    Path to a client key file for TLS
 
 .PP
 \fB\-\-cluster\fP=""
@@ -67,12 +71,16 @@ that you must have a cluster\-wide administrative role to view all namespaces.
     The contents of a default certificate to use for routes that don't expose a TLS server cert; in PEM format
 
 .PP
+\fB\-\-default\-certificate\-dir\fP=""
+    A path to a directory that contains a file named tls.crt. If tls.crt is not a PEM file which also contains a private key, it is first combined with a file named tls.key in the same directory. The PEM\-format contents are then used as the default certificate. Only used if default\-certificate and default\-certificate\-path are not specified.
+
+.PP
 \fB\-\-default\-certificate\-path\fP=""
     A path to default certificate to use for routes that don't expose a TLS server cert; in PEM format
 
 .PP
-\fB\-\-extended\-validation\fP=false
-    If set, then an additional extended validation step is performed on all routes admitted in by this router.
+\fB\-\-extended\-validation\fP=true
+    If set, then an additional extended validation step is performed on all routes admitted in by this router. Defaults to true and enables the extended validation checks.
 
 .PP
 \fB\-\-fields\fP=""
@@ -88,7 +96,7 @@ that you must have a cluster\-wide administrative role to view all namespaces.
 
 .PP
 \fB\-\-insecure\-skip\-tls\-verify\fP=false
-    If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.
+    If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure
 
 .PP
 \fB\-\-interval\fP=0
@@ -114,7 +122,7 @@ that you must have a cluster\-wide administrative role to view all namespaces.
 
 .PP
 \fB\-n\fP, \fB\-\-namespace\fP=""
-    If present, the namespace scope for this CLI request.
+    If present, the namespace scope for this CLI request
 
 .PP
 \fB\-\-namespace\-labels\fP=""
@@ -158,7 +166,7 @@ that you must have a cluster\-wide administrative role to view all namespaces.
 
 .PP
 \fB\-\-token\fP=""
-    Bearer token for authentication to the API server.
+    Bearer token for authentication to the API server
 
 .PP
 \fB\-\-user\fP=""

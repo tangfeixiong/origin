@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blang/semver"
 	"github.com/emicklei/go-restful/swagger"
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/client/typed/discovery"
+	"k8s.io/kubernetes/pkg/client/typed/dynamic"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	kclientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
@@ -42,16 +44,16 @@ import (
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	authorizationreaper "github.com/openshift/origin/pkg/authorization/reaper"
 	buildapi "github.com/openshift/origin/pkg/build/api"
-	buildreaper "github.com/openshift/origin/pkg/build/reaper"
+	buildcmd "github.com/openshift/origin/pkg/build/cmd"
 	buildutil "github.com/openshift/origin/pkg/build/util"
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/cli/describe"
 	"github.com/openshift/origin/pkg/cmd/util"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	deploycmd "github.com/openshift/origin/pkg/deploy/cmd"
-	deploygen "github.com/openshift/origin/pkg/deploy/generator"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
+	imageutil "github.com/openshift/origin/pkg/image/util"
 	routegen "github.com/openshift/origin/pkg/route/generator"
 	userapi "github.com/openshift/origin/pkg/user/api"
 	authenticationreaper "github.com/openshift/origin/pkg/user/reaper"
@@ -60,12 +62,6 @@ import (
 // New creates a default Factory for commands that should share identical server
 // connection behavior. Most commands should use this method to get a factory.
 func New(flags *pflag.FlagSet) *Factory {
-	// TODO refactor this upstream:
-	// DefaultCluster should not be a global
-	// A call to ClientConfig() should always return the best clientCfg possible
-	// even if an error was returned, and let the caller decide what to do
-	kclientcmd.DefaultCluster.Server = ""
-
 	// TODO: there should be two client configs, one for OpenShift, and one for Kubernetes
 	clientConfig := DefaultClientConfig(flags)
 	clientConfig = defaultingClientConfig{clientConfig}
@@ -166,12 +162,14 @@ type Factory struct {
 	*cmdutil.Factory
 	OpenShiftClientConfig kclientcmd.ClientConfig
 	clients               *clientCache
+
+	ImageResolutionOptions FlagBinder
 }
 
 func DefaultGenerators(cmdName string) map[string]kubectl.Generator {
 	generators := map[string]map[string]kubectl.Generator{}
 	generators["run"] = map[string]kubectl.Generator{
-		"deploymentconfig/v1": deploygen.BasicDeploymentConfigController{},
+		"deploymentconfig/v1": deploycmd.BasicDeploymentConfigController{},
 		"run-controller/v1":   kubectl.BasicReplicationController{}, // legacy alias for run/v1
 	}
 	generators["expose"] = map[string]kubectl.Generator{
@@ -192,13 +190,13 @@ func NewFactory(clientConfig kclientcmd.ClientConfig) *Factory {
 	}
 
 	w := &Factory{
-		Factory:               cmdutil.NewFactory(clientConfig),
-		OpenShiftClientConfig: clientConfig,
-		clients:               clients,
+		Factory:                cmdutil.NewFactory(clientConfig),
+		OpenShiftClientConfig:  clientConfig,
+		clients:                clients,
+		ImageResolutionOptions: &imageResolutionOptions{},
 	}
 
 	w.Object = func(bool) (meta.RESTMapper, runtime.ObjectTyper) {
-
 		defaultMapper := ShortcutExpander{RESTMapper: kubectl.ShortcutExpander{RESTMapper: restMapper}}
 		defaultTyper := api.Scheme
 
@@ -223,9 +221,51 @@ func NewFactory(clientConfig kclientcmd.ClientConfig) *Factory {
 		cacheDir := computeDiscoverCacheDir(filepath.Join(homedir.HomeDir(), ".kube"), cfg.Host)
 		cachedDiscoverClient := NewCachedDiscoveryClient(client.NewDiscoveryClient(oclient.RESTClient), cacheDir, time.Duration(10*time.Minute))
 
-		mapper := restmapper.NewDiscoveryRESTMapper(cachedDiscoverClient)
+		// if we can't find the server version or its too old to have Kind information in the discovery doc, skip the discovery RESTMapper
+		// and use our hardcoded levels
+		mapper := registered.RESTMapper()
+		if serverVersion, err := cachedDiscoverClient.ServerVersion(); err == nil && useDiscoveryRESTMapper(serverVersion.GitVersion) {
+			mapper = restmapper.NewDiscoveryRESTMapper(cachedDiscoverClient)
+		}
 		mapper = NewShortcutExpander(cachedDiscoverClient, kubectl.ShortcutExpander{RESTMapper: mapper})
 		return kubectl.OutputVersionMapper{RESTMapper: mapper, OutputVersions: []unversioned.GroupVersion{cmdApiVersion}}, api.Scheme
+	}
+
+	w.UnstructuredObject = func() (meta.RESTMapper, runtime.ObjectTyper, error) {
+		// load a discovery client from the default config
+		cfg, err := clients.ClientConfigForVersion(nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+		cacheDir := computeDiscoverCacheDir(filepath.Join(homedir.HomeDir(), ".kube"), cfg.Host)
+		cachedDiscoverClient := NewCachedDiscoveryClient(client.NewDiscoveryClient(dc.RESTClient), cacheDir, time.Duration(10*time.Minute))
+
+		// enumerate all group resources
+		groupResources, err := discovery.GetAPIGroupResources(cachedDiscoverClient)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Register unknown APIs as third party for now to make
+		// validation happy. TODO perhaps make a dynamic schema
+		// validator to avoid this.
+		for _, group := range groupResources {
+			for _, version := range group.Group.Versions {
+				gv := unversioned.GroupVersion{Group: group.Group.Name, Version: version.Version}
+				if !registered.IsRegisteredVersion(gv) {
+					registered.AddThirdPartyAPIGroupVersions(gv)
+				}
+			}
+		}
+
+		// construct unstructured mapper and typer
+		mapper := discovery.NewRESTMapper(groupResources, meta.InterfacesForUnstructured)
+		typer := discovery.NewUnstructuredObjectTyper(groupResources)
+		return NewShortcutExpander(cachedDiscoverClient, kubectl.ShortcutExpander{RESTMapper: mapper}), typer, nil
 	}
 
 	kClientForMapping := w.Factory.ClientForMapping
@@ -239,6 +279,28 @@ func NewFactory(clientConfig kclientcmd.ClientConfig) *Factory {
 			return client.RESTClient, nil
 		}
 		return kClientForMapping(mapping)
+	}
+
+	kUnstructuredClientForMapping := w.Factory.UnstructuredClientForMapping
+	w.UnstructuredClientForMapping = func(mapping *meta.RESTMapping) (resource.RESTClient, error) {
+		if latest.OriginKind(mapping.GroupVersionKind) {
+			cfg, err := clientConfig.ClientConfig()
+			if err != nil {
+				return nil, err
+			}
+			if err := client.SetOpenShiftDefaults(cfg); err != nil {
+				return nil, err
+			}
+			cfg.APIPath = "/apis"
+			if mapping.GroupVersionKind.Group == api.GroupName {
+				cfg.APIPath = "/oapi"
+			}
+			gv := mapping.GroupVersionKind.GroupVersion()
+			cfg.ContentConfig = dynamic.ContentConfig()
+			cfg.GroupVersion = &gv
+			return restclient.RESTClientFor(cfg)
+		}
+		return kUnstructuredClientForMapping(mapping)
 	}
 
 	// Save original Describer function
@@ -324,7 +386,7 @@ func NewFactory(clientConfig kclientcmd.ClientConfig) *Factory {
 			if err != nil {
 				return nil, err
 			}
-			return buildreaper.NewBuildConfigReaper(oc), nil
+			return buildcmd.NewBuildConfigReaper(oc), nil
 		}
 		return kReaperFunc(mapping)
 	}
@@ -416,8 +478,8 @@ func NewFactory(clientConfig kclientcmd.ClientConfig) *Factory {
 	}
 	// Saves current resource name (or alias if any) in PrintOptions. Once saved, it will not be overwritten by the
 	// kubernetes resource alias look-up, as it will notice a non-empty value in `options.Kind`
-	w.Printer = func(mapping *meta.RESTMapping, options *kubectl.PrintOptions) (kubectl.ResourcePrinter, error) {
-		if mapping != nil && options != nil {
+	w.Printer = func(mapping *meta.RESTMapping, options kubectl.PrintOptions) (kubectl.ResourcePrinter, error) {
+		if mapping != nil {
 			options.Kind = mapping.Resource
 			if alias, ok := resourceShortFormFor(mapping.Resource); ok {
 				options.Kind = alias
@@ -535,6 +597,22 @@ func NewFactory(clientConfig kclientcmd.ClientConfig) *Factory {
 			return kResumeObjectFunc(object)
 		}
 	}
+	kResolveImageFunc := w.Factory.ResolveImage
+	w.Factory.ResolveImage = func(image string) (string, error) {
+		options := w.ImageResolutionOptions.(*imageResolutionOptions)
+		if imageutil.IsDocker(options.Source) {
+			return kResolveImageFunc(image)
+		}
+		oc, _, err := w.Clients()
+		if err != nil {
+			return "", err
+		}
+		namespace, _, err := w.DefaultNamespace()
+		if err != nil {
+			return "", err
+		}
+		return imageutil.ResolveImagePullSpec(oc, oc, options.Source, image, namespace)
+	}
 	kHistoryViewerFunc := w.Factory.HistoryViewer
 	w.Factory.HistoryViewer = func(mapping *meta.RESTMapping) (kubectl.HistoryViewer, error) {
 		switch mapping.GroupVersionKind.GroupKind() {
@@ -559,8 +637,63 @@ func NewFactory(clientConfig kclientcmd.ClientConfig) *Factory {
 		}
 		return kRollbackerFunc(mapping)
 	}
+	kStatusViewerFunc := w.Factory.StatusViewer
+	w.Factory.StatusViewer = func(mapping *meta.RESTMapping) (kubectl.StatusViewer, error) {
+		oc, _, err := w.Clients()
+		if err != nil {
+			return nil, err
+		}
+
+		switch mapping.GroupVersionKind.GroupKind() {
+		case deployapi.Kind("DeploymentConfig"):
+			return deploycmd.NewDeploymentConfigStatusViewer(oc), nil
+		}
+		return kStatusViewerFunc(mapping)
+	}
 
 	return w
+}
+
+// FlagBinder represents an interface that allows to bind extra flags into commands.
+type FlagBinder interface {
+	// Bound returns true if the flag is already bound to a command.
+	Bound() bool
+	// Bind allows to bind an extra flag to a command
+	Bind(*pflag.FlagSet)
+}
+
+// ImageResolutionOptions provides the "--source" flag to commands that deal with images
+// and need to provide extra capabilities for working with ImageStreamTags and
+// ImageStreamImages.
+type imageResolutionOptions struct {
+	bound  bool
+	Source string
+}
+
+func (o *imageResolutionOptions) Bound() bool {
+	return o.bound
+}
+
+func (o *imageResolutionOptions) Bind(f *pflag.FlagSet) {
+	if o.Bound() {
+		return
+	}
+	f.StringVarP(&o.Source, "source", "", "istag", "The image source type; valid types are valid values are 'imagestreamtag', 'istag', 'imagestreamimage', 'isimage', and 'docker'")
+	o.bound = true
+}
+
+// useDiscoveryRESTMapper checks the server version to see if its recent enough to have
+// enough discovery information avaiable to reliably build a RESTMapper.  If not, use the
+// hardcoded mapper in this client (legacy behavior)
+func useDiscoveryRESTMapper(serverVersion string) bool {
+	serverSemVer, err := semver.Parse(serverVersion[1:])
+	if err != nil {
+		return false
+	}
+	if serverSemVer.LT(semver.MustParse("1.3.0")) {
+		return false
+	}
+	return true
 }
 
 // overlyCautiousIllegalFileCharacters matches characters that *might* not be supported.  Windows is really restrictive, so this is really restrictive
@@ -835,7 +968,7 @@ func (f *Factory) Clients() (*client.Client, *kclient.Client, error) {
 
 // OriginSwaggerSchema returns a swagger API doc for an Origin schema under the /oapi prefix.
 func (f *Factory) OriginSwaggerSchema(client *restclient.RESTClient, version unversioned.GroupVersion) (*swagger.ApiDeclaration, error) {
-	if version.IsEmpty() {
+	if version.Empty() {
 		return nil, fmt.Errorf("groupVersion cannot be empty")
 	}
 	body, err := client.Get().AbsPath("/").Suffix("swaggerapi", "oapi", version.Version).Do().Raw()

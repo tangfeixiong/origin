@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -157,7 +158,11 @@ func NewCmdRegistry(f *clientcmd.Factory, parentName, name string, out io.Writer
 				Config: cfg,
 			}
 			kcmdutil.CheckErr(opts.Complete(f, cmd, out, args))
-			kcmdutil.CheckErr(opts.RunCmdRegistry())
+			err := opts.RunCmdRegistry()
+			if err == cmdutil.ErrExit {
+				os.Exit(1)
+			}
+			kcmdutil.CheckErr(err)
 		},
 	}
 
@@ -240,7 +245,7 @@ func (opts *RegistryOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, 
 	}
 
 	opts.Config.Action.Bulk.Mapper = clientcmd.ResourceMapper(f)
-	opts.Config.Action.Out, opts.Config.Action.ErrOut = out, cmd.Out()
+	opts.Config.Action.Out, opts.Config.Action.ErrOut = out, cmd.OutOrStderr()
 	opts.Config.Action.Bulk.Op = configcmd.Create
 	opts.out = out
 	opts.cmd = cmd
@@ -257,19 +262,19 @@ func (opts *RegistryOptions) RunCmdRegistry() error {
 
 	output := opts.Config.Action.ShouldPrint()
 	generate := output
-	if !generate {
-		service, err := opts.serviceClient.Services(opts.namespace).Get(name)
-		if err != nil {
-			if !errors.IsNotFound(err) && !generate {
+	service, err := opts.serviceClient.Services(opts.namespace).Get(name)
+	if err != nil {
+		if !generate {
+			if !errors.IsNotFound(err) {
 				return fmt.Errorf("can't check for existing docker-registry %q: %v", name, err)
 			}
-			if !output && opts.Config.Action.DryRun {
+			if opts.Config.Action.DryRun {
 				return fmt.Errorf("Docker registry %q service does not exist", name)
 			}
 			generate = true
-		} else {
-			clusterIP = service.Spec.ClusterIP
 		}
+	} else {
+		clusterIP = service.Spec.ClusterIP
 	}
 
 	if !generate {
@@ -295,13 +300,8 @@ func (opts *RegistryOptions) RunCmdRegistry() error {
 		if err := restclient.LoadTLSFiles(config); err != nil {
 			return fmt.Errorf("registry does not exist; the provided credentials %q could not load certificate info: %v", opts.Config.Credentials, err)
 		}
-		insecure := "false"
-		if config.Insecure {
-			insecure = "true"
-		} else {
-			if len(config.KeyData) == 0 || len(config.CertData) == 0 {
-				return fmt.Errorf("registry does not exist; the provided credentials %q are missing the client certificate and/or key", opts.Config.Credentials)
-			}
+		if !config.Insecure && (len(config.KeyData) == 0 || len(config.CertData) == 0) {
+			return fmt.Errorf("registry does not exist; the provided credentials %q are missing the client certificate and/or key", opts.Config.Credentials)
 		}
 
 		secretEnv = app.Environment{
@@ -309,7 +309,7 @@ func (opts *RegistryOptions) RunCmdRegistry() error {
 			"OPENSHIFT_CA_DATA":   string(config.CAData),
 			"OPENSHIFT_KEY_DATA":  string(config.KeyData),
 			"OPENSHIFT_CERT_DATA": string(config.CertData),
-			"OPENSHIFT_INSECURE":  insecure,
+			"OPENSHIFT_INSECURE":  fmt.Sprintf("%t", config.Insecure),
 		}
 	}
 
@@ -328,7 +328,7 @@ func (opts *RegistryOptions) RunCmdRegistry() error {
 		if err != nil {
 			return fmt.Errorf("registry does not exist; could not load TLS private key file %q: %v", opts.Config.ServingKeyPath, err)
 		}
-		servingCert = data
+		servingKey = data
 	}
 
 	env := app.Environment{}
@@ -341,7 +341,7 @@ func (opts *RegistryOptions) RunCmdRegistry() error {
 		env["REGISTRY_HTTP_ADDR"] = fmt.Sprintf(":%d", healthzPort)
 		env["REGISTRY_HTTP_NET"] = "tcp"
 	}
-	secrets, volumes, mounts, extraEnv, tls, err := generateSecretsConfig(opts.Config, opts.namespace, servingCert, servingKey)
+	secrets, volumes, mounts, extraEnv, tls, err := generateSecretsConfig(opts.Config, servingCert, servingKey)
 	if err != nil {
 		return err
 	}
@@ -478,24 +478,17 @@ func (opts *RegistryOptions) RunCmdRegistry() error {
 }
 
 func generateLivenessProbeConfig(port int, https bool) *kapi.Probe {
-	var scheme kapi.URIScheme
-	if https {
-		scheme = kapi.URISchemeHTTPS
-	}
-	return &kapi.Probe{
-		InitialDelaySeconds: 10,
-		TimeoutSeconds:      healthzRouteTimeoutSeconds,
-		Handler: kapi.Handler{
-			HTTPGet: &kapi.HTTPGetAction{
-				Scheme: scheme,
-				Path:   healthzRoute,
-				Port:   intstr.FromInt(port),
-			},
-		},
-	}
+	probeConfig := generateProbeConfig(port, https)
+	probeConfig.InitialDelaySeconds = 10
+
+	return probeConfig
 }
 
 func generateReadinessProbeConfig(port int, https bool) *kapi.Probe {
+	return generateProbeConfig(port, https)
+}
+
+func generateProbeConfig(port int, https bool) *kapi.Probe {
 	var scheme kapi.URIScheme
 	if https {
 		scheme = kapi.URISchemeHTTPS
@@ -516,7 +509,7 @@ func generateReadinessProbeConfig(port int, https bool) *kapi.Probe {
 // as the TLS serving cert that are necessary for the registry container.
 // Runs true if the registry should be served over TLS.
 func generateSecretsConfig(
-	cfg *RegistryConfig, namespace string, defaultCrt, defaultKey []byte,
+	cfg *RegistryConfig, defaultCrt, defaultKey []byte,
 ) ([]*kapi.Secret, []kapi.Volume, []kapi.VolumeMount, app.Environment, bool, error) {
 	var secrets []*kapi.Secret
 	var volumes []kapi.Volume

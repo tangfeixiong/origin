@@ -18,6 +18,8 @@ import (
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/golang/glog"
+
+	"github.com/openshift/origin/pkg/image/reference"
 )
 
 const (
@@ -109,16 +111,6 @@ func MakeImageStreamImageName(name, id string) string {
 	return fmt.Sprintf("%s@%s", name, id)
 }
 
-func isRegistryName(str string) bool {
-	switch {
-	case strings.Contains(str, ":"),
-		strings.Contains(str, "."),
-		str == "localhost":
-		return true
-	}
-	return false
-}
-
 // IsRegistryDockerHub returns true if the given registry name belongs to
 // Docker hub.
 func IsRegistryDockerHub(registry string) bool {
@@ -134,59 +126,17 @@ func IsRegistryDockerHub(registry string) bool {
 // DockerImageReference.
 func ParseDockerImageReference(spec string) (DockerImageReference, error) {
 	var ref DockerImageReference
-	// TODO replace with docker version once docker/docker PR11109 is merged upstream
-	stream, tag, id := parseRepositoryTag(spec)
 
-	repoParts := strings.Split(stream, "/")
-	switch len(repoParts) {
-	case 2:
-		if isRegistryName(repoParts[0]) {
-			// registry/name
-			ref.Registry = repoParts[0]
-			if IsRegistryDockerHub(ref.Registry) {
-				ref.Namespace = DockerDefaultNamespace
-			}
-			if len(repoParts[1]) == 0 {
-				return ref, fmt.Errorf("the docker pull spec %q must be two or three segments separated by slashes", spec)
-			}
-			ref.Name = repoParts[1]
-			ref.Tag = tag
-			ref.ID = id
-			break
-		}
-		// namespace/name
-		ref.Namespace = repoParts[0]
-		if len(repoParts[1]) == 0 {
-			return ref, fmt.Errorf("the docker pull spec %q must be two or three segments separated by slashes", spec)
-		}
-		ref.Name = repoParts[1]
-		ref.Tag = tag
-		ref.ID = id
-		break
-	case 3:
-		// registry/namespace/name
-		ref.Registry = repoParts[0]
-		ref.Namespace = repoParts[1]
-		if len(repoParts[2]) == 0 {
-			return ref, fmt.Errorf("the docker pull spec %q must be two or three segments separated by slashes", spec)
-		}
-		ref.Name = repoParts[2]
-		ref.Tag = tag
-		ref.ID = id
-		break
-	case 1:
-		// name
-		if len(repoParts[0]) == 0 {
-			return ref, fmt.Errorf("the docker pull spec %q must be two or three segments separated by slashes", spec)
-		}
-		ref.Name = repoParts[0]
-		ref.Tag = tag
-		ref.ID = id
-		break
-	default:
-		// TODO: this is no longer true with V2
-		return ref, fmt.Errorf("the docker pull spec %q must be two or three segments separated by slashes", spec)
+	namedRef, err := reference.ParseNamedDockerImageReference(spec)
+	if err != nil {
+		return ref, err
 	}
+
+	ref.Registry = namedRef.Registry
+	ref.Namespace = namedRef.Namespace
+	ref.Name = namedRef.Name
+	ref.Tag = namedRef.Tag
+	ref.ID = namedRef.ID
 
 	return ref, nil
 }
@@ -436,14 +386,14 @@ func ImageConfigMatchesImage(image *Image, imageConfig []byte) (bool, error) {
 	return v.Verified(), nil
 }
 
-// ImageWithMetadata returns a copy of image with the DockerImageMetadata filled in
-// from the raw DockerImageManifest data stored in the image.
+// ImageWithMetadata mutates the given image. It parses raw DockerImageManifest data stored in the image and
+// fills its DockerImageMetadata and other fields.
 func ImageWithMetadata(image *Image) error {
 	if len(image.DockerImageManifest) == 0 {
 		return nil
 	}
 
-	if len(image.DockerImageLayers) > 0 && image.DockerImageMetadata.Size > 0 {
+	if len(image.DockerImageLayers) > 0 && image.DockerImageMetadata.Size > 0 && len(image.DockerImageManifestMediaType) > 0 {
 		glog.V(5).Infof("Image metadata already filled for %s", image.Name)
 		// don't update image already filled
 		return nil
@@ -460,6 +410,8 @@ func ImageWithMetadata(image *Image) error {
 	case 0:
 		// legacy config object
 	case 1:
+		image.DockerImageManifestMediaType = schema1.MediaTypeManifest
+
 		if len(manifest.History) == 0 {
 			// should never have an empty history, but just in case...
 			return nil
@@ -520,6 +472,8 @@ func ImageWithMetadata(image *Image) error {
 			image.DockerImageMetadata.Size = v1Metadata.Size
 		}
 	case 2:
+		image.DockerImageManifestMediaType = schema2.MediaTypeManifest
+
 		config := DockerImageConfig{}
 		if err := json.Unmarshal([]byte(image.DockerImageConfig), &config); err != nil {
 			return err
@@ -548,8 +502,8 @@ func ImageWithMetadata(image *Image) error {
 		image.DockerImageMetadata.Architecture = config.Architecture
 		image.DockerImageMetadata.Size = int64(len(image.DockerImageConfig))
 
+		layerSet := sets.NewString(image.DockerImageMetadata.ID)
 		if len(image.DockerImageLayers) > 0 {
-			layerSet := sets.NewString()
 			for _, layer := range image.DockerImageLayers {
 				if layerSet.Has(layer.Name) {
 					continue
@@ -557,8 +511,6 @@ func ImageWithMetadata(image *Image) error {
 				layerSet.Insert(layer.Name)
 				image.DockerImageMetadata.Size += layer.LayerSize
 			}
-		} else {
-			image.DockerImageMetadata.Size += config.Size
 		}
 	default:
 		return fmt.Errorf("unrecognized Docker image manifest schema %d for %q (%s)", manifest.SchemaVersion, image.Name, image.DockerImageReference)
@@ -639,6 +591,20 @@ func DifferentTagEvent(stream *ImageStream, tag string, next TagEvent) bool {
 	sameRef := previous.DockerImageReference == next.DockerImageReference
 	sameImage := previous.Image == next.Image
 	return !(sameRef && sameImage)
+}
+
+// DifferentTagEvent compares the generation on tag's spec vs its status.
+// Returns if spec generation is newer than status one.
+func DifferentTagGeneration(stream *ImageStream, tag string) bool {
+	specTag, ok := stream.Spec.Tags[tag]
+	if !ok || specTag.Generation == nil {
+		return true
+	}
+	statusTag, ok := stream.Status.Tags[tag]
+	if !ok || len(statusTag.Items) == 0 {
+		return true
+	}
+	return *specTag.Generation > statusTag.Items[0].Generation
 }
 
 // AddTagEventToImageStream attempts to update the given image stream with a tag event. It will

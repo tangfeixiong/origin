@@ -1,4 +1,4 @@
-// Copyright 2015 CoreOS, Inc.
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -75,7 +75,6 @@ type Progress struct {
 
 func (pr *Progress) resetState(state ProgressStateType) {
 	pr.Paused = false
-	pr.RecentActive = false
 	pr.PendingSnapshot = 0
 	pr.State = state
 	pr.ins.reset()
@@ -167,9 +166,9 @@ func (pr *Progress) isPaused() bool {
 
 func (pr *Progress) snapshotFailure() { pr.PendingSnapshot = 0 }
 
-// maybeSnapshotAbort unsets pendingSnapshot if Match is equal or higher than
-// the pendingSnapshot
-func (pr *Progress) maybeSnapshotAbort() bool {
+// needSnapshotAbort returns true if snapshot progress's Match
+// is equal or higher than the pendingSnapshot.
+func (pr *Progress) needSnapshotAbort() bool {
 	return pr.State == ProgressStateSnapshot && pr.Match >= pr.PendingSnapshot
 }
 
@@ -190,8 +189,7 @@ type inflights struct {
 
 func newInflights(size int) *inflights {
 	return &inflights{
-		size:   size,
-		buffer: make([]uint64, size),
+		size: size,
 	}
 }
 
@@ -204,8 +202,26 @@ func (in *inflights) add(inflight uint64) {
 	if next >= in.size {
 		next -= in.size
 	}
+	if next >= len(in.buffer) {
+		in.growBuf()
+	}
 	in.buffer[next] = inflight
 	in.count++
+}
+
+// grow the inflight buffer by doubling up to inflights.size. We grow on demand
+// instead of preallocating to inflights.size to handle systems which have
+// thousands of Raft groups per process.
+func (in *inflights) growBuf() {
+	newSize := len(in.buffer) * 2
+	if newSize == 0 {
+		newSize = 1
+	} else if newSize > in.size {
+		newSize = in.size
+	}
+	newBuffer := make([]uint64, newSize)
+	copy(newBuffer, in.buffer)
+	in.buffer = newBuffer
 }
 
 // freeTo frees the inflights smaller or equal to the given `to` flight.
@@ -229,6 +245,11 @@ func (in *inflights) freeTo(to uint64) {
 	// free i inflights and set new start index
 	in.count -= i
 	in.start = idx
+	if in.count == 0 {
+		// inflights is empty, reset the start index so that we don't grow the
+		// buffer unnecessarily.
+		in.start = 0
+	}
 }
 
 func (in *inflights) freeFirstOne() { in.freeTo(in.buffer[in.start]) }

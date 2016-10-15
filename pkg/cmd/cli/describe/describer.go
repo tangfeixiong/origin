@@ -10,8 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/docker/docker/pkg/parsers"
-	"github.com/docker/docker/pkg/units"
+	units "github.com/docker/go-units"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrs "k8s.io/kubernetes/pkg/api/errors"
@@ -31,6 +30,7 @@ import (
 	projectapi "github.com/openshift/origin/pkg/project/api"
 	quotaapi "github.com/openshift/origin/pkg/quota/api"
 	routeapi "github.com/openshift/origin/pkg/route/api"
+	sdnapi "github.com/openshift/origin/pkg/sdn/api"
 	templateapi "github.com/openshift/origin/pkg/template/api"
 	userapi "github.com/openshift/origin/pkg/user/api"
 )
@@ -38,7 +38,7 @@ import (
 func describerMap(c *client.Client, kclient kclient.Interface, host string) map[unversioned.GroupKind]kctl.Describer {
 	m := map[unversioned.GroupKind]kctl.Describer{
 		buildapi.Kind("Build"):                        &BuildDescriber{c, kclient},
-		buildapi.Kind("BuildConfig"):                  &BuildConfigDescriber{c, host},
+		buildapi.Kind("BuildConfig"):                  &BuildConfigDescriber{c, kclient, host},
 		deployapi.Kind("DeploymentConfig"):            &DeploymentConfigDescriber{c, kclient, nil},
 		authorizationapi.Kind("Identity"):             &IdentityDescriber{c},
 		imageapi.Kind("Image"):                        &ImageDescriber{c},
@@ -62,6 +62,10 @@ func describerMap(c *client.Client, kclient kclient.Interface, host string) map[
 		userapi.Kind("UserIdentityMapping"):           &UserIdentityMappingDescriber{c},
 		quotaapi.Kind("ClusterResourceQuota"):         &ClusterQuotaDescriber{c},
 		quotaapi.Kind("AppliedClusterResourceQuota"):  &AppliedClusterQuotaDescriber{c},
+		sdnapi.Kind("ClusterNetwork"):                 &ClusterNetworkDescriber{c},
+		sdnapi.Kind("HostSubnet"):                     &HostSubnetDescriber{c},
+		sdnapi.Kind("NetNamespace"):                   &NetNamespaceDescriber{c},
+		sdnapi.Kind("EgressNetworkPolicy"):            &EgressNetworkPolicyDescriber{c},
 	}
 	return m
 }
@@ -167,7 +171,8 @@ func describeBuildDuration(build *buildapi.Build) string {
 // BuildConfigDescriber generates information about a buildConfig
 type BuildConfigDescriber struct {
 	client.Interface
-	host string
+	kubeClient kclient.Interface
+	host       string
 }
 
 func nameAndNamespace(ns, name string) string {
@@ -301,7 +306,7 @@ func describeSourceStrategy(s *buildapi.SourceBuildStrategy, out *tabwriter.Writ
 	if s.PullSecret != nil {
 		formatString(out, "Pull Secret Name", s.PullSecret.Name)
 	}
-	if s.Incremental {
+	if s.Incremental != nil && *s.Incremental {
 		formatString(out, "Incremental Build", "yes")
 	}
 	if s.ForcePull {
@@ -435,23 +440,31 @@ func (d *BuildConfigDescriber) Describe(namespace, name string, settings kctl.De
 		describeCommonSpec(buildConfig.Spec.CommonSpec, out)
 		formatString(out, "\nBuild Run Policy", string(buildConfig.Spec.RunPolicy))
 		d.DescribeTriggers(buildConfig, out)
-		if len(buildList.Items) == 0 {
-			return nil
+
+		if len(buildList.Items) > 0 {
+			fmt.Fprintf(out, "\nBuild\tStatus\tDuration\tCreation Time\n")
+
+			builds := buildList.Items
+			sort.Sort(sort.Reverse(buildapi.BuildSliceByCreationTimestamp(builds)))
+
+			for i, build := range builds {
+				fmt.Fprintf(out, "%s \t%s \t%v \t%v\n",
+					build.Name,
+					strings.ToLower(string(build.Status.Phase)),
+					describeBuildDuration(&build),
+					build.CreationTimestamp.Rfc3339Copy().Time)
+				// only print the 10 most recent builds.
+				if i == 9 {
+					break
+				}
+			}
 		}
-		fmt.Fprintf(out, "\nBuild\tStatus\tDuration\tCreation Time\n")
 
-		builds := buildList.Items
-		sort.Sort(sort.Reverse(buildapi.BuildSliceByCreationTimestamp(builds)))
-
-		for i, build := range builds {
-			fmt.Fprintf(out, "%s \t%s \t%v \t%v\n",
-				build.Name,
-				strings.ToLower(string(build.Status.Phase)),
-				describeBuildDuration(&build),
-				build.CreationTimestamp.Rfc3339Copy().Time)
-			// only print the 10 most recent builds.
-			if i == 9 {
-				break
+		if settings.ShowEvents {
+			events, _ := d.kubeClient.Events(namespace).Search(buildConfig)
+			if events != nil {
+				fmt.Fprint(out, "\n")
+				kctl.DescribeEvents(events, out)
 			}
 		}
 		return nil
@@ -593,8 +606,11 @@ type ImageStreamTagDescriber struct {
 // Describe returns the description of an imageStreamTag
 func (d *ImageStreamTagDescriber) Describe(namespace, name string, settings kctl.DescriberSettings) (string, error) {
 	c := d.ImageStreamTags(namespace)
-	repo, tag := parsers.ParseRepositoryTag(name)
-	if tag == "" {
+	repo, tag, err := imageapi.ParseImageStreamTagName(name)
+	if err != nil {
+		return "", err
+	}
+	if len(tag) == 0 {
 		// TODO use repo's preferred default, when that's coded
 		tag = imageapi.DefaultImageTag
 	}
@@ -614,7 +630,10 @@ type ImageStreamImageDescriber struct {
 // Describe returns the description of an imageStreamImage
 func (d *ImageStreamImageDescriber) Describe(namespace, name string, settings kctl.DescriberSettings) (string, error) {
 	c := d.ImageStreamImages(namespace)
-	repo, id := parsers.ParseRepositoryTag(name)
+	repo, id, err := imageapi.ParseImageStreamImageName(name)
+	if err != nil {
+		return "", err
+	}
 	imageStreamImage, err := c.Get(repo, id)
 	if err != nil {
 		return "", err
@@ -650,6 +669,11 @@ type RouteDescriber struct {
 	kubeClient kclient.Interface
 }
 
+type routeEndpointInfo struct {
+	*kapi.Endpoints
+	Err error
+}
+
 // Describe returns the description of a route
 func (d *RouteDescriber) Describe(namespace, name string, settings kctl.DescriberSettings) (string, error) {
 	c := d.Routes(namespace)
@@ -658,7 +682,16 @@ func (d *RouteDescriber) Describe(namespace, name string, settings kctl.Describe
 		return "", err
 	}
 
-	endpoints, endsErr := d.kubeClient.Endpoints(namespace).Get(route.Spec.To.Name)
+	backends := append([]routeapi.RouteTargetReference{route.Spec.To}, route.Spec.AlternateBackends...)
+	totalWeight := int32(0)
+	endpoints := make(map[string]routeEndpointInfo)
+	for _, backend := range backends {
+		if backend.Weight != nil {
+			totalWeight += *backend.Weight
+		}
+		ep, endpointsErr := d.kubeClient.Endpoints(namespace).Get(backend.Name)
+		endpoints[backend.Name] = routeEndpointInfo{ep, endpointsErr}
+	}
 
 	return tabbedString(func(out *tabwriter.Writer) error {
 		formatMeta(out, route.ObjectMeta)
@@ -681,6 +714,7 @@ func (d *RouteDescriber) Describe(namespace, name string, settings kctl.Describe
 		} else {
 			formatString(out, "Requested Host", "<auto>")
 		}
+
 		for _, ingress := range route.Status.Ingress {
 			if route.Spec.Host == ingress.Host {
 				continue
@@ -705,23 +739,39 @@ func (d *RouteDescriber) Describe(namespace, name string, settings kctl.Describe
 		}
 		formatString(out, "TLS Termination", tlsTerm)
 		formatString(out, "Insecure Policy", insecurePolicy)
-
-		formatString(out, "Service", route.Spec.To.Name)
 		if route.Spec.Port != nil {
 			formatString(out, "Endpoint Port", route.Spec.Port.TargetPort.String())
 		} else {
 			formatString(out, "Endpoint Port", "<all endpoint ports>")
 		}
 
-		ends := "<none>"
-		if endsErr != nil {
-			ends = fmt.Sprintf("Unable to get endpoints: %v", endsErr)
-		} else if len(endpoints.Subsets) > 0 {
-			list := []string{}
+		for _, backend := range backends {
+			fmt.Fprintln(out)
+			formatString(out, "Service", backend.Name)
+			weight := int32(0)
+			if backend.Weight != nil {
+				weight = *backend.Weight
+			}
+			if weight > 0 {
+				fmt.Fprintf(out, "Weight:\t%d (%d%%)\n", weight, weight*100/totalWeight)
+			} else {
+				formatString(out, "Weight", "0")
+			}
 
+			info := endpoints[backend.Name]
+			if info.Err != nil {
+				formatString(out, "Endpoints", fmt.Sprintf("<error: %v>", info.Err))
+				continue
+			}
+			endpoints := info.Endpoints
+			if len(endpoints.Subsets) == 0 {
+				formatString(out, "Endpoints", "<none>")
+				continue
+			}
+
+			list := []string{}
 			max := 3
 			count := 0
-
 			for i := range endpoints.Subsets {
 				ss := &endpoints.Subsets[i]
 				for p := range ss.Ports {
@@ -733,12 +783,12 @@ func (d *RouteDescriber) Describe(namespace, name string, settings kctl.Describe
 					}
 				}
 			}
-			ends = strings.Join(list, ", ")
+			ends := strings.Join(list, ", ")
 			if count > max {
 				ends += fmt.Sprintf(" + %d more...", count-max)
 			}
+			formatString(out, "Endpoints", ends)
 		}
-		formatString(out, "Endpoints", ends)
 		return nil
 	})
 }
@@ -1167,7 +1217,7 @@ func DescribePolicyRule(out *tabwriter.Writer, rule authorizationapi.PolicyRule,
 
 		buffer := new(bytes.Buffer)
 
-		printer := NewHumanReadablePrinter(&kctl.PrintOptions{NoHeaders: true})
+		printer := NewHumanReadablePrinter(kctl.PrintOptions{NoHeaders: true})
 		if err := printer.PrintObj(rule.AttributeRestrictions, buffer); err == nil {
 			extensionString = strings.TrimSpace(buffer.String())
 		}
@@ -1485,4 +1535,81 @@ func (d *AppliedClusterQuotaDescriber) Describe(namespace, name string, settings
 		return "", err
 	}
 	return DescribeClusterQuota(quotaapi.ConvertAppliedClusterResourceQuotaToClusterResourceQuota(quota))
+}
+
+type ClusterNetworkDescriber struct {
+	client.Interface
+}
+
+// Describe returns the description of a ClusterNetwork
+func (d *ClusterNetworkDescriber) Describe(namespace, name string, settings kctl.DescriberSettings) (string, error) {
+	cn, err := d.ClusterNetwork().Get(name)
+	if err != nil {
+		return "", err
+	}
+	return tabbedString(func(out *tabwriter.Writer) error {
+		formatMeta(out, cn.ObjectMeta)
+		formatString(out, "Cluster Network", cn.Network)
+		formatString(out, "Host Subnet Length", cn.HostSubnetLength)
+		formatString(out, "Service Network", cn.ServiceNetwork)
+		formatString(out, "Plugin Name", cn.PluginName)
+		return nil
+	})
+}
+
+type HostSubnetDescriber struct {
+	client.Interface
+}
+
+// Describe returns the description of a HostSubnet
+func (d *HostSubnetDescriber) Describe(namespace, name string, settings kctl.DescriberSettings) (string, error) {
+	hs, err := d.HostSubnets().Get(name)
+	if err != nil {
+		return "", err
+	}
+	return tabbedString(func(out *tabwriter.Writer) error {
+		formatMeta(out, hs.ObjectMeta)
+		formatString(out, "Node", hs.Host)
+		formatString(out, "Node IP", hs.HostIP)
+		formatString(out, "Pod Subnet", hs.Subnet)
+		return nil
+	})
+}
+
+type NetNamespaceDescriber struct {
+	client.Interface
+}
+
+// Describe returns the description of a NetNamespace
+func (d *NetNamespaceDescriber) Describe(namespace, name string, settings kctl.DescriberSettings) (string, error) {
+	netns, err := d.NetNamespaces().Get(name)
+	if err != nil {
+		return "", err
+	}
+	return tabbedString(func(out *tabwriter.Writer) error {
+		formatMeta(out, netns.ObjectMeta)
+		formatString(out, "Name", netns.NetName)
+		formatString(out, "ID", netns.NetID)
+		return nil
+	})
+}
+
+type EgressNetworkPolicyDescriber struct {
+	osClient client.Interface
+}
+
+// Describe returns the description of an EgressNetworkPolicy
+func (d *EgressNetworkPolicyDescriber) Describe(namespace, name string, settings kctl.DescriberSettings) (string, error) {
+	c := d.osClient.EgressNetworkPolicies(namespace)
+	policy, err := c.Get(name)
+	if err != nil {
+		return "", err
+	}
+	return tabbedString(func(out *tabwriter.Writer) error {
+		formatMeta(out, policy.ObjectMeta)
+		for _, rule := range policy.Spec.Egress {
+			fmt.Fprintf(out, "Rule:\t%s to %s\n", rule.Type, rule.To.CIDRSelector)
+		}
+		return nil
+	})
 }

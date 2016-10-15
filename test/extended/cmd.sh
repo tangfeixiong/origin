@@ -4,17 +4,8 @@
 # No registry or router is setup.
 # It is intended to test cli commands that may require docker and therefore
 # cannot be run under Travis.
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/lib/init.sh"
-os::log::stacktrace::install
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 os::util::environment::setup_time_vars
-
-cd "${OS_ROOT}"
 
 os::build::setup_env
 
@@ -147,6 +138,13 @@ os::cmd::expect_success "oc delete all --all"
 os::cmd::expect_success "docker rmi -f ${docker_registry}/image-ns/busybox:latest"
 os::test::junit::declare_suite_end
 
+# Test to see that we're reporting the correct commit being used by the build
+os::test::junit::declare_suite_start "extended/cmd/new-build"
+os::cmd::expect_success "oc new-build https://github.com/openshift/ruby-hello-world.git#bd94cbb228465d30d9d3430e80b503757a2a1d97"
+os::cmd::try_until_text "oc logs builds/ruby-hello-world-1" "Commit:[[:space:]]*bd94cbb228465d30d9d3430e80b503757a2a1d97"
+os::cmd::expect_success "oc delete all --all"
+os::test::junit::declare_suite_end
+
 os::test::junit::declare_suite_start "extended/cmd/service-signer"
 # check to make sure that service serving cert signing works correctly
 # nginx currently needs to run as root
@@ -178,3 +176,15 @@ os::cmd::expect_success_and_text 'oc logs pods/centos' "Welcome to nginx"
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_end
+
+os::test::junit::declare_suite_start "extended/cmd/oc-on-kube"
+os::cmd::expect_success "oc login -u system:admin -n default"
+os::cmd::expect_success "oc new-project kube"
+os::cmd::expect_success "oc create -f test/testdata/kubernetes-server/apiserver.yaml"
+os::cmd::try_until_text "oc get pods/kube-apiserver -o 'jsonpath={.status.conditions[?(@.type == "Ready")].status}'" "True"
+os::cmd::try_until_text "oc get pods/kube-apiserver -o 'jsonpath={.status.podIP}'" "172"
+kube_ip="$(oc get pods/kube-apiserver -o 'jsonpath={.status.podIP}')"
+kube_kubectl="${tmp}/kube-kubeconfig"
+os::cmd::try_until_text "oc login --config ${kube_kubectl}../kube-kubeconfig https://${kube_ip}:443 --token=secret --insecure-skip-tls-verify=true --loglevel=8" ' as "secret" using the token provided.'
+os::test::junit::declare_suite_end
+

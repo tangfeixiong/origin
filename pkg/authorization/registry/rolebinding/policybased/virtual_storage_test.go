@@ -69,7 +69,7 @@ func makeTestStorage() rolebindingregistry.Storage {
 	clusterPolicyRegistry := test.NewClusterPolicyRegistry(testNewClusterPolicies(), nil)
 	policyRegistry := test.NewPolicyRegistry([]authorizationapi.Policy{}, nil)
 
-	return NewVirtualStorage(bindingRegistry, rulevalidation.NewDefaultRuleResolver(policyRegistry, bindingRegistry, clusterPolicyRegistry, clusterBindingRegistry))
+	return NewVirtualStorage(bindingRegistry, rulevalidation.NewDefaultRuleResolver(policyRegistry, bindingRegistry, clusterPolicyRegistry, clusterBindingRegistry), nil, authorizationapi.Resource("rolebinding"))
 }
 
 func makeClusterTestStorage() rolebindingregistry.Storage {
@@ -77,7 +77,7 @@ func makeClusterTestStorage() rolebindingregistry.Storage {
 	clusterPolicyRegistry := test.NewClusterPolicyRegistry(testNewClusterPolicies(), nil)
 	bindingRegistry := clusterpolicybindingregistry.NewSimulatedRegistry(clusterBindingRegistry)
 
-	return NewVirtualStorage(bindingRegistry, rulevalidation.NewDefaultRuleResolver(nil, nil, clusterPolicyRegistry, clusterBindingRegistry))
+	return NewVirtualStorage(bindingRegistry, rulevalidation.NewDefaultRuleResolver(nil, nil, clusterPolicyRegistry, clusterBindingRegistry), nil, authorizationapi.Resource("clusterrolebinding"))
 }
 
 func TestCreateValidationError(t *testing.T) {
@@ -178,6 +178,76 @@ func TestUpdate(t *testing.T) {
 		}
 	default:
 		t.Errorf("Unexpected result type: %v", obj)
+	}
+}
+
+func TestUnconditionalUpdate(t *testing.T) {
+	ctx := kapi.WithUser(kapi.WithNamespace(kapi.NewContext(), "unittest"), &user.DefaultInfo{Name: "system:admin"})
+
+	storage := makeTestStorage()
+	obj, err := storage.Create(ctx, &authorizationapi.RoleBinding{
+		ObjectMeta: kapi.ObjectMeta{Name: "my-roleBinding"},
+		RoleRef:    kapi.ObjectReference{Name: "admin"},
+	})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+		return
+	}
+	original := obj.(*authorizationapi.RoleBinding)
+
+	roleBinding := &authorizationapi.RoleBinding{
+		ObjectMeta: original.ObjectMeta,
+		RoleRef:    kapi.ObjectReference{Name: "admin"},
+		Subjects:   []kapi.ObjectReference{{Name: "bob", Kind: "User"}},
+	}
+	roleBinding.ResourceVersion = ""
+
+	obj, created, err := storage.Update(ctx, roleBinding.Name, rest.DefaultUpdatedObjectInfo(roleBinding, kapi.Scheme))
+	if err != nil || created {
+		t.Errorf("Unexpected error %v", err)
+	}
+
+	switch actual := obj.(type) {
+	case *unversioned.Status:
+		t.Errorf("Unexpected operation error: %v", obj)
+
+	case *authorizationapi.RoleBinding:
+		if original.ResourceVersion == actual.ResourceVersion {
+			t.Errorf("Expected change to role binding. Expected: %s, Got: %s", original.ResourceVersion, actual.ResourceVersion)
+		}
+		roleBinding.ResourceVersion = actual.ResourceVersion
+		if !reflect.DeepEqual(roleBinding, obj) {
+			t.Errorf("Updated roleBinding does not match input roleBinding. %s", diff.ObjectReflectDiff(roleBinding, obj))
+		}
+	default:
+		t.Errorf("Unexpected result type: %v", obj)
+	}
+}
+
+func TestConflictingUpdate(t *testing.T) {
+	ctx := kapi.WithUser(kapi.WithNamespace(kapi.NewContext(), "unittest"), &user.DefaultInfo{Name: "system:admin"})
+
+	storage := makeTestStorage()
+	obj, err := storage.Create(ctx, &authorizationapi.RoleBinding{
+		ObjectMeta: kapi.ObjectMeta{Name: "my-roleBinding"},
+		RoleRef:    kapi.ObjectReference{Name: "admin"},
+	})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+		return
+	}
+	original := obj.(*authorizationapi.RoleBinding)
+
+	roleBinding := &authorizationapi.RoleBinding{
+		ObjectMeta: original.ObjectMeta,
+		RoleRef:    kapi.ObjectReference{Name: "admin"},
+		Subjects:   []kapi.ObjectReference{{Name: "bob", Kind: "User"}},
+	}
+	roleBinding.ResourceVersion = roleBinding.ResourceVersion + "1"
+
+	_, _, err = storage.Update(ctx, roleBinding.Name, rest.DefaultUpdatedObjectInfo(roleBinding, kapi.Scheme))
+	if err == nil || !kapierrors.IsConflict(err) {
+		t.Errorf("Expected conflict error, got: %#v", err)
 	}
 }
 
@@ -284,7 +354,7 @@ func TestDeleteError(t *testing.T) {
 	bindingRegistry := &test.PolicyBindingRegistry{}
 	bindingRegistry.Err = errors.New("Sample Error")
 
-	storage := NewVirtualStorage(bindingRegistry, rulevalidation.NewDefaultRuleResolver(&test.PolicyRegistry{}, bindingRegistry, &test.ClusterPolicyRegistry{}, &test.ClusterPolicyBindingRegistry{}))
+	storage := NewVirtualStorage(bindingRegistry, rulevalidation.NewDefaultRuleResolver(&test.PolicyRegistry{}, bindingRegistry, &test.ClusterPolicyRegistry{}, &test.ClusterPolicyBindingRegistry{}), nil, authorizationapi.Resource("rolebinding"))
 	ctx := kapi.WithUser(kapi.WithNamespace(kapi.NewContext(), "unittest"), &user.DefaultInfo{Name: "system:admin"})
 	_, err := storage.Delete(ctx, "foo", nil)
 	if err != bindingRegistry.Err {

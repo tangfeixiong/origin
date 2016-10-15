@@ -121,217 +121,6 @@ func TestParseImageStreamTagName(t *testing.T) {
 	}
 }
 
-func TestParseDockerImageReference(t *testing.T) {
-	testCases := []struct {
-		From                               string
-		Registry, Namespace, Name, Tag, ID string
-		Err                                bool
-	}{
-		{
-			From: "foo",
-			Name: "foo",
-		},
-		{
-			From: "foo:tag",
-			Name: "foo",
-			Tag:  "tag",
-		},
-		{
-			From: "foo@sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
-			Name: "foo",
-			ID:   "sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
-		},
-		{
-			From:      "bar/foo",
-			Namespace: "bar",
-			Name:      "foo",
-		},
-		{
-			From:      "bar/foo:tag",
-			Namespace: "bar",
-			Name:      "foo",
-			Tag:       "tag",
-		},
-		{
-			From:      "bar/foo@sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
-			Namespace: "bar",
-			Name:      "foo",
-			ID:        "sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
-		},
-		{
-			From:      "bar/foo/baz",
-			Registry:  "bar",
-			Namespace: "foo",
-			Name:      "baz",
-		},
-		{
-			From:      "bar/library/baz",
-			Registry:  "bar",
-			Namespace: "library",
-			Name:      "baz",
-		},
-		{
-			From:      "bar/foo/baz:tag",
-			Registry:  "bar",
-			Namespace: "foo",
-			Name:      "baz",
-			Tag:       "tag",
-		},
-		{
-			From:      "bar/foo/baz@sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
-			Registry:  "bar",
-			Namespace: "foo",
-			Name:      "baz",
-			ID:        "sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
-		},
-		{
-			From:      "bar:5000/foo/baz",
-			Registry:  "bar:5000",
-			Namespace: "foo",
-			Name:      "baz",
-		},
-		{
-			From:      "bar:5000/library/baz",
-			Registry:  "bar:5000",
-			Namespace: "library",
-			Name:      "baz",
-		},
-		{
-			From:     "bar:5000/baz",
-			Registry: "bar:5000",
-			Name:     "baz",
-		},
-		{
-			From:      "bar:5000/foo/baz:tag",
-			Registry:  "bar:5000",
-			Namespace: "foo",
-			Name:      "baz",
-			Tag:       "tag",
-		},
-		{
-			From:      "bar:5000/foo/baz@sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
-			Registry:  "bar:5000",
-			Namespace: "foo",
-			Name:      "baz",
-			ID:        "sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
-		},
-		{
-			From:     "myregistry.io/foo",
-			Registry: "myregistry.io",
-			Name:     "foo",
-		},
-		{
-			From:     "localhost/bar",
-			Registry: "localhost",
-			Name:     "bar",
-		},
-		{
-			From:      "docker.io/library/myapp",
-			Registry:  "docker.io",
-			Namespace: "library",
-			Name:      "myapp",
-		},
-		{
-			From:      "docker.io/myapp",
-			Registry:  "docker.io",
-			Namespace: DockerDefaultNamespace,
-			Name:      "myapp",
-		},
-		{
-			From:      "docker.io/user/myapp",
-			Registry:  "docker.io",
-			Namespace: "user",
-			Name:      "myapp",
-		},
-		{
-			From:      "index.docker.io/bar",
-			Registry:  "index.docker.io",
-			Namespace: DockerDefaultNamespace,
-			Name:      "bar",
-		},
-		// TODO: test cases if ParseDockerImageReference validates segment length and allowed chars
-		//
-		// {
-		// 	// namespace/name == 255 chars
-		// 	From:      fmt.Sprintf("bar:5000/%s/%s:tag", strings.Repeat("a", 63), strings.Repeat("b", 191)),
-		// 	Registry:  "bar:5000",
-		// 	Namespace: strings.Repeat("a", 63),
-		// 	Name:      strings.Repeat("b", 191),
-		// 	Tag:       "tag",
-		// },
-		// {
-		// 	// namespace/name == 255 chars with implicit namespace
-		// 	From:      fmt.Sprintf("bar:5000/%s:tag", strings.Repeat("b", 247)),
-		// 	Registry:  "bar:5000",
-		// 	Namespace: DockerDefaultNamespace,
-		// 	Name:      strings.Repeat("b", 247),
-		// 	Tag:       "tag",
-		// },
-		// {
-		// 	// namespace/name > 255 chars
-		// 	From: fmt.Sprintf("bar:5000/%s/%s:tag", strings.Repeat("a", 63), strings.Repeat("b", 192)),
-		// 	Err:  true,
-		// },
-		// {
-		// 	// namespace/name > 255 chars with implicit namespace
-		// 	From: fmt.Sprintf("bar:5000/%s:tag", strings.Repeat("b", 248)),
-		// 	Err:  true,
-		// },
-		// {
-		// 	// namespace < 2 chars
-		// 	From: "bar:5000/a/b:tag",
-		// 	Err:  true,
-		// },
-		{
-			From: "https://bar:5000/foo/baz",
-			Err:  true,
-		},
-		{
-			From: "http://bar:5000/foo/baz@sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
-			Err:  true,
-		},
-		{
-			From: "bar/foo/baz/biz",
-			Err:  true,
-		},
-		{
-			From: "ftp://baz/baz/biz",
-			Err:  true,
-		},
-		{
-			From: "",
-			Err:  true,
-		},
-	}
-
-	for _, testCase := range testCases {
-		ref, err := ParseDockerImageReference(testCase.From)
-		switch {
-		case err != nil && !testCase.Err:
-			t.Errorf("%s: unexpected error: %v", testCase.From, err)
-			continue
-		case err == nil && testCase.Err:
-			t.Errorf("%s: unexpected non-error", testCase.From)
-			continue
-		}
-		if e, a := testCase.Registry, ref.Registry; e != a {
-			t.Errorf("%s: registry: expected %q, got %q", testCase.From, e, a)
-		}
-		if e, a := testCase.Namespace, ref.Namespace; e != a {
-			t.Errorf("%s: namespace: expected %q, got %q", testCase.From, e, a)
-		}
-		if e, a := testCase.Name, ref.Name; e != a {
-			t.Errorf("%s: name: expected %q, got %q", testCase.From, e, a)
-		}
-		if e, a := testCase.Tag, ref.Tag; e != a {
-			t.Errorf("%s: tag: expected %q, got %q", testCase.From, e, a)
-		}
-		if e, a := testCase.ID, ref.ID; e != a {
-			t.Errorf("%s: id: expected %q, got %q", testCase.From, e, a)
-		}
-	}
-}
-
 func TestDockerImageReferenceAsRepository(t *testing.T) {
 	testCases := []struct {
 		Registry, Namespace, Name, Tag, ID string
@@ -638,7 +427,6 @@ func validImageWithManifestV2Data() Image {
 		ObjectMeta: kapi.ObjectMeta{
 			Name: "id",
 		},
-		DockerImageManifestMediaType: "application/vnd.docker.container.image.v1+json",
 		DockerImageConfig: `{
     "architecture": "amd64",
     "config": {
@@ -816,6 +604,7 @@ func TestImageWithMetadata(t *testing.T) {
 					{Name: "tarsum.dev+sha256:b194de3772ebbcdc8f244f663669799ac1cb141834b7cb8b69100285d357a2b0", MediaType: "application/vnd.docker.container.image.rootfs.diff+x-gtar", LayerSize: 1895},
 					{Name: "tarsum.dev+sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", MediaType: "application/vnd.docker.container.image.rootfs.diff+x-gtar", LayerSize: 0},
 				},
+				DockerImageManifestMediaType: "application/vnd.docker.distribution.manifest.v1+json",
 				DockerImageMetadata: DockerImage{
 					ID:        "2d24f826cb16146e2016ff349a8a33ed5830f3b938d45c0f82943f4ab8c097e7",
 					Parent:    "117ee323aaa9d1b136ea55e4421f4ce413dfc6c0cc6b2186dea6c88d93e1ad7c",
@@ -888,7 +677,7 @@ func TestImageWithMetadata(t *testing.T) {
 				},
 				DockerImageConfig:            validImageWithManifestV2Data().DockerImageConfig,
 				DockerImageManifest:          validImageWithManifestV2Data().DockerImageManifest,
-				DockerImageManifestMediaType: "application/vnd.docker.container.image.v1+json",
+				DockerImageManifestMediaType: "application/vnd.docker.distribution.manifest.v2+json",
 				DockerImageLayers: []ImageLayer{
 					{Name: "sha256:b4ed95caeb02ffe68cdd9fd84406680ae93d633cb16422d00e8a7c22955b46d4", MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip", LayerSize: 639152},
 					{Name: "sha256:86e0e091d0da6bde2456dbb48306f3956bbeb2eae1b5b9a43045843f69fe4aaa", MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip", LayerSize: 235231},

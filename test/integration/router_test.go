@@ -1218,6 +1218,41 @@ func eventString(e *watch.Event) string {
 	return string(s)
 }
 
+var defaultCert = `-----BEGIN CERTIFICATE-----
+MIIDIjCCAgqgAwIBAgIBBjANBgkqhkiG9w0BAQUFADCBoTELMAkGA1UEBhMCVVMx
+CzAJBgNVBAgMAlNDMRUwEwYDVQQHDAxEZWZhdWx0IENpdHkxHDAaBgNVBAoME0Rl
+ZmF1bHQgQ29tcGFueSBMdGQxEDAOBgNVBAsMB1Rlc3QgQ0ExGjAYBgNVBAMMEXd3
+dy5leGFtcGxlY2EuY29tMSIwIAYJKoZIhvcNAQkBFhNleGFtcGxlQGV4YW1wbGUu
+Y29tMB4XDTE2MDExMzE5NDA1N1oXDTI2MDExMDE5NDA1N1owfDEYMBYGA1UEAxMP
+d3d3LmV4YW1wbGUuY29tMQswCQYDVQQIEwJTQzELMAkGA1UEBhMCVVMxIjAgBgkq
+hkiG9w0BCQEWE2V4YW1wbGVAZXhhbXBsZS5jb20xEDAOBgNVBAoTB0V4YW1wbGUx
+EDAOBgNVBAsTB0V4YW1wbGUwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAM0B
+u++oHV1wcphWRbMLUft8fD7nPG95xs7UeLPphFZuShIhhdAQMpvcsFeg+Bg9PWCu
+v3jZljmk06MLvuWLfwjYfo9q/V+qOZVfTVHHbaIO5RTXJMC2Nn+ACF0kHBmNcbth
+OOgF8L854a/P8tjm1iPR++vHnkex0NH7lyosVc/vAgMBAAGjDTALMAkGA1UdEwQC
+MAAwDQYJKoZIhvcNAQEFBQADggEBADjFm5AlNH3DNT1Uzx3m66fFjqqrHEs25geT
+yA3rvBuynflEHQO95M/8wCxYVyuAx4Z1i4YDC7tx0vmOn/2GXZHY9MAj1I8KCnwt
+Jik7E2r1/yY0MrkawljOAxisXs821kJ+Z/51Ud2t5uhGxS6hJypbGspMS7OtBbw7
+8oThK7cWtCXOldNF6ruqY1agWnhRdAq5qSMnuBXuicOP0Kbtx51a1ugE3SnvQenJ
+nZxdtYUXvEsHZC/6bAtTfNh+/SwgxQJuL2ZM+VG3X2JIKY8xTDui+il7uTh422lq
+wED8uwKl+bOj6xFDyw4gWoBxRobsbFaME8pkykP1+GnKDberyAM=
+-----END CERTIFICATE-----
+-----BEGIN RSA PRIVATE KEY-----
+MIICWwIBAAKBgQDNAbvvqB1dcHKYVkWzC1H7fHw+5zxvecbO1Hiz6YRWbkoSIYXQ
+EDKb3LBXoPgYPT1grr942ZY5pNOjC77li38I2H6Pav1fqjmVX01Rx22iDuUU1yTA
+tjZ/gAhdJBwZjXG7YTjoBfC/OeGvz/LY5tYj0fvrx55HsdDR+5cqLFXP7wIDAQAB
+AoGAfE7P4Zsj6zOzGPI/Izj7Bi5OvGnEeKfzyBiH9Dflue74VRQkqqwXs/DWsNv3
+c+M2Y3iyu5ncgKmUduo5X8D9To2ymPRLGuCdfZTxnBMpIDKSJ0FTwVPkr6cYyyBk
+5VCbc470pQPxTAAtl2eaO1sIrzR4PcgwqrSOjwBQQocsGAECQQD8QOra/mZmxPbt
+bRh8U5lhgZmirImk5RY3QMPI/1/f4k+fyjkU5FRq/yqSyin75aSAXg8IupAFRgyZ
+W7BT6zwBAkEA0A0ugAGorpCbuTa25SsIOMxkEzCiKYvh0O+GfGkzWG4lkSeJqGME
+keuJGlXrZNKNoCYLluAKLPmnd72X2yTL7wJARM0kAXUP0wn324w8+HQIyqqBj/gF
+Vt9Q7uMQQ3s72CGu3ANZDFS2nbRZFU5koxrggk6lRRk1fOq9NvrmHg10AQJABOea
+pgfj+yGLmkUw8JwgGH6xCUbHO+WBUFSlPf+Y50fJeO+OrjqPXAVKeSV3ZCwWjKT4
+9viXJNJJ4WfF0bO/XwJAOMB1wQnEOSZ4v+laMwNtMq6hre5K8woqteXICoGcIWe8
+u3YLAbyW/lHhOCiZu2iAI8AbmXem9lW6Tr7p/97s0w==
+-----END RSA PRIVATE KEY-----`
+
 // createAndStartRouterContainer is responsible for deploying the router image in docker.  It assumes that all router images
 // will use a command line flag that can take --master which points to the master url
 func createAndStartRouterContainer(dockerCli *dockerClient.Client, masterIp string, routerStatsPort int, reloadInterval int) (containerId string, err error) {
@@ -1255,6 +1290,7 @@ func createAndStartRouterContainer(dockerCli *dockerClient.Client, masterIp stri
 		fmt.Sprintf("STATS_PORT=%d", routerStatsPort),
 		fmt.Sprintf("STATS_USERNAME=%s", statsUser),
 		fmt.Sprintf("STATS_PASSWORD=%s", statsPassword),
+		fmt.Sprintf("DEFAULT_CERTIFICATE=%s", defaultCert),
 	}
 
 	reloadIntVar := fmt.Sprintf("RELOAD_INTERVAL=%ds", reloadInterval)
@@ -1389,8 +1425,8 @@ func getRouteAddress() string {
 	return addr
 }
 
-// generateTestEvents generates endpoint and route added test events.
-func generateTestEvents(t *testing.T, fakeMasterAndPod *tr.TestHttpService, flag bool, serviceName, routeName, routeAlias string, endpoints []kapi.EndpointSubset) {
+// generateEndpointEvents generates endpoint test events.
+func generateEndpointEvent(t *testing.T, fakeMasterAndPod *tr.TestHttpService, flag bool, serviceName string, endpoints []kapi.EndpointSubset) {
 	endpointEvent := &watch.Event{
 		Type: watch.Added,
 
@@ -1402,7 +1438,18 @@ func generateTestEvents(t *testing.T, fakeMasterAndPod *tr.TestHttpService, flag
 			Subsets: endpoints,
 		},
 	}
+	if flag {
+		//clean up
+		endpointEvent.Type = watch.Modified
+		endpoints := endpointEvent.Object.(*kapi.Endpoints)
+		endpoints.Subsets = []kapi.EndpointSubset{}
+	}
 
+	sendTimeout(t, fakeMasterAndPod.EndpointChannel, eventString(endpointEvent), 30*time.Second)
+}
+
+// generateTestEvents generates endpoint and route added test events.
+func generateTestEvents(t *testing.T, fakeMasterAndPod *tr.TestHttpService, flag bool, serviceName, routeName, routeAlias string) {
 	routeEvent := &watch.Event{
 		Type: watch.Added,
 		Object: &routeapi.Route{
@@ -1424,12 +1471,8 @@ func generateTestEvents(t *testing.T, fakeMasterAndPod *tr.TestHttpService, flag
 	if flag {
 		//clean up
 		routeEvent.Type = watch.Deleted
-		endpointEvent.Type = watch.Modified
-		endpoints := endpointEvent.Object.(*kapi.Endpoints)
-		endpoints.Subsets = []kapi.EndpointSubset{}
 	}
 
-	sendTimeout(t, fakeMasterAndPod.EndpointChannel, eventString(endpointEvent), 30*time.Second)
 	sendTimeout(t, fakeMasterAndPod.RouteChannel, eventString(routeEvent), 30*time.Second)
 }
 
@@ -1484,12 +1527,15 @@ func TestRouterReloadCoalesce(t *testing.T) {
 	endpoints := []kapi.EndpointSubset{httpEndpoint}
 	numRoutes := 10
 
+	// use the same endpoints for the entire test
+	generateEndpointEvent(t, fakeMasterAndPod, false, serviceName, endpoints)
+
 	for i := 1; i <= numRoutes; i++ {
 		routeName := fmt.Sprintf("coalesce-route-%v", i)
 		routeAlias = fmt.Sprintf("www.example-coalesce-%v.test", i)
 
 		// Send the add events.
-		generateTestEvents(t, fakeMasterAndPod, false, serviceName, routeName, routeAlias, endpoints)
+		generateTestEvents(t, fakeMasterAndPod, false, serviceName, routeName, routeAlias)
 	}
 
 	// Wait for the last routeAlias to become available.
@@ -1510,7 +1556,7 @@ func TestRouterReloadCoalesce(t *testing.T) {
 		routeAlias = fmt.Sprintf("www.example-coalesce-%v.test", i)
 
 		// Send the cleanup events.
-		generateTestEvents(t, fakeMasterAndPod, true, serviceName, routeName, routeAlias, endpoints)
+		generateTestEvents(t, fakeMasterAndPod, true, serviceName, routeName, routeAlias)
 	}
 
 	// Wait for the first routeAlias to become unavailable.

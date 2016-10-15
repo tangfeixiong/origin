@@ -13,8 +13,8 @@ import (
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apimachinery/registered"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/watch"
 	e2e "k8s.io/kubernetes/test/e2e/framework"
 )
@@ -26,7 +26,7 @@ func createDNSPod(namespace, probeCmd string) *api.Pod {
 			APIVersion: registered.GroupOrDie(api.GroupName).GroupVersion.String(),
 		},
 		ObjectMeta: api.ObjectMeta{
-			Name:      "dns-test-" + string(util.NewUUID()),
+			Name:      "dns-test-" + string(uuid.NewUUID()),
 			Namespace: namespace,
 		},
 		Spec: api.PodSpec{
@@ -204,7 +204,7 @@ func createEndpointSpec(name string) *api.Endpoints {
 		Subsets: []api.EndpointSubset{
 			{
 				Addresses: []api.EndpointAddress{
-					{IP: "1.1.1.1"},
+					{IP: "1.1.1.1", Hostname: "endpoint1"},
 					{IP: "1.1.1.2"},
 				},
 				NotReadyAddresses: []api.EndpointAddress{
@@ -266,19 +266,20 @@ var _ = Describe("DNS", func() {
 				"prefix.kubernetes.default.svc",
 				"prefix.kubernetes.default.svc.cluster.local",
 
-				// answer wildcards on cluster service
-				fmt.Sprintf("prefix.headless.%s", f.Namespace.Name),
+				// answer wildcards on clusterIP services
 				fmt.Sprintf("prefix.clusterip.%s", f.Namespace.Name),
 			}, expect),
 
 			// the DNS pod should be able to look up endpoints for names and wildcards
 			digForARecords(map[string][]string{
-				"kubernetes.default.endpoints":                      kubeEndpoints,
-				"prefix.kubernetes.default.endpoints.cluster.local": kubeEndpoints,
+				"kubernetes.default.endpoints": kubeEndpoints,
 
 				fmt.Sprintf("headless.%s.svc", f.Namespace.Name):        readyEndpoints,
 				fmt.Sprintf("headless.%s.endpoints", f.Namespace.Name):  readyEndpoints,
 				fmt.Sprintf("clusterip.%s.endpoints", f.Namespace.Name): readyEndpoints,
+
+				fmt.Sprintf("endpoint1.headless.%s.endpoints", f.Namespace.Name):  {"1.1.1.1"},
+				fmt.Sprintf("endpoint1.clusterip.%s.endpoints", f.Namespace.Name): {"1.1.1.1"},
 			}, expect),
 
 			// the DNS pod should respond to its own request

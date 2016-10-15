@@ -42,19 +42,20 @@ type DebugOptions struct {
 	Filename   string
 	Timeout    time.Duration
 
-	Command         []string
-	Annotations     map[string]string
-	AsRoot          bool
-	AsNonRoot       bool
-	AsUser          int64
-	KeepLabels      bool // TODO: evaluate selecting the right labels automatically
-	KeepAnnotations bool
-	KeepLiveness    bool
-	KeepReadiness   bool
-	OneContainer    bool
-	NodeName        string
-	AddEnv          []kapi.EnvVar
-	RemoveEnv       []string
+	Command            []string
+	Annotations        map[string]string
+	AsRoot             bool
+	AsNonRoot          bool
+	AsUser             int64
+	KeepLabels         bool // TODO: evaluate selecting the right labels automatically
+	KeepAnnotations    bool
+	KeepLiveness       bool
+	KeepReadiness      bool
+	KeepInitContainers bool
+	OneContainer       bool
+	NodeName           string
+	AddEnv             []kapi.EnvVar
+	RemoveEnv          []string
 }
 
 const (
@@ -148,6 +149,7 @@ func NewCmdDebug(fullName string, f *clientcmd.Factory, in io.Reader, out, errou
 	cmd.Flags().StringVarP(&options.Attach.ContainerName, "container", "c", "", "Container name; defaults to first container")
 	cmd.Flags().BoolVar(&options.KeepAnnotations, "keep-annotations", false, "Keep the original pod annotations")
 	cmd.Flags().BoolVar(&options.KeepLiveness, "keep-liveness", false, "Keep the original pod liveness probes")
+	cmd.Flags().BoolVar(&options.KeepInitContainers, "keep-init-containers", true, "Run the init containers for the pod. Defaults to true.")
 	cmd.Flags().BoolVar(&options.KeepReadiness, "keep-readiness", false, "Keep the original pod readiness probes")
 	cmd.Flags().BoolVar(&options.OneContainer, "one-container", false, "Run only the selected container, remove all others")
 	cmd.Flags().StringVar(&options.NodeName, "node-name", "", "Set a specific node to run on - by default the pod will run on any valid node")
@@ -328,10 +330,14 @@ func (o *DebugOptions) Debug() error {
 	o.Attach.InterruptParent = interrupt.New(
 		func(os.Signal) { os.Exit(1) },
 		func() {
-			fmt.Fprintf(o.Attach.Err, "\nRemoving debug pod ...\n")
+			stderr := o.Attach.Err
+			if stderr == nil {
+				stderr = os.Stderr
+			}
+			fmt.Fprintf(stderr, "\nRemoving debug pod ...\n")
 			if err := o.Attach.Client.Pods(pod.Namespace).Delete(pod.Name, kapi.NewDeleteOptions(0)); err != nil {
 				if !kapierrors.IsNotFound(err) {
-					fmt.Fprintf(o.Attach.Err, "error: unable to delete the debug pod %q: %v\n", pod.Name, err)
+					fmt.Fprintf(stderr, "error: unable to delete the debug pod %q: %v\n", pod.Name, err)
 				}
 			}
 		},
@@ -344,6 +350,7 @@ func (o *DebugOptions) Debug() error {
 			return err
 		}
 		fmt.Fprintf(o.Attach.Err, "Waiting for pod to start ...\n")
+
 		switch containerRunningEvent, err := watch.Until(o.Timeout, w, kclient.PodContainerRunning(o.Attach.ContainerName)); {
 		// api didn't error right away but the pod wasn't even created
 		case kapierrors.IsNotFound(err):
@@ -352,8 +359,8 @@ func (o *DebugOptions) Debug() error {
 				msg += fmt.Sprintf(" on node %q", o.NodeName)
 			}
 			return fmt.Errorf(msg)
-		// switch to logging output
-		case err == kclient.ErrPodCompleted, !o.Attach.Stdin:
+			// switch to logging output
+		case err == kclient.ErrPodCompleted, err == kclient.ErrContainerTerminated, !o.Attach.Stdin:
 			_, err := kcmd.LogsOptions{
 				Object: pod,
 				Options: &kapi.PodLogOptions{
@@ -383,6 +390,10 @@ func (o *DebugOptions) Debug() error {
 // transformPodForDebug alters the input pod to be debuggable
 func (o *DebugOptions) transformPodForDebug(annotations map[string]string) (*kapi.Pod, []string) {
 	pod := o.Attach.Pod
+
+	if !o.KeepInitContainers {
+		pod.Spec.InitContainers = nil
+	}
 
 	// reset the container
 	container := containerForName(pod, o.Attach.ContainerName)
@@ -508,10 +519,14 @@ func (o *DebugOptions) createPod(pod *kapi.Pod) (*kapi.Pod, error) {
 
 func containerForName(pod *kapi.Pod, name string) *kapi.Container {
 	for i, c := range pod.Spec.Containers {
-		if c.Name != name {
-			continue
+		if c.Name == name {
+			return &pod.Spec.Containers[i]
 		}
-		return &pod.Spec.Containers[i]
+	}
+	for i, c := range pod.Spec.InitContainers {
+		if c.Name == name {
+			return &pod.Spec.InitContainers[i]
+		}
 	}
 	return nil
 }

@@ -51,6 +51,9 @@ func (s *StoreToDeploymentConfigLister) GetConfigForPod(pod *kapi.Pod) (*deploya
 	return obj.(*deployapi.DeploymentConfig), nil
 }
 
+// GetConfigsForImageStream returns all the deployment configs that point to the provided image stream
+// by searching through using the ImageStreamReferenceIndex (deployment configs are indexed in the cache
+// by namespace and by image stream references).
 func (s *StoreToDeploymentConfigLister) GetConfigsForImageStream(stream *imageapi.ImageStream) ([]*deployapi.DeploymentConfig, error) {
 	items, err := s.Indexer.ByIndex(ImageStreamReferenceIndex, stream.Namespace+"/"+stream.Name)
 	if err != nil {
@@ -71,6 +74,7 @@ func (s *StoreToDeploymentConfigLister) DeploymentConfigs(namespace string) stor
 	return storeDeploymentConfigsNamespacer{s.Indexer, namespace}
 }
 
+// storeDeploymentConfigsNamespacer provides a way to get and list DeploymentConfigs from a specific namespace.
 type storeDeploymentConfigsNamespacer struct {
 	indexer   cache.Indexer
 	namespace string

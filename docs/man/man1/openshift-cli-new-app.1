@@ -138,19 +138,19 @@ You can use 'openshift cli status' to check the progress.
 
 .PP
 \fB\-\-as\fP=""
-    Username to impersonate for the operation.
+    Username to impersonate for the operation
 
 .PP
 \fB\-\-certificate\-authority\fP=""
-    Path to a cert. file for the certificate authority.
+    Path to a cert. file for the certificate authority
 
 .PP
 \fB\-\-client\-certificate\fP=""
-    Path to a client certificate file for TLS.
+    Path to a client certificate file for TLS
 
 .PP
 \fB\-\-client\-key\fP=""
-    Path to a client key file for TLS.
+    Path to a client key file for TLS
 
 .PP
 \fB\-\-cluster\fP=""
@@ -170,7 +170,7 @@ You can use 'openshift cli status' to check the progress.
 
 .PP
 \fB\-\-insecure\-skip\-tls\-verify\fP=false
-    If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.
+    If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure
 
 .PP
 \fB\-\-log\-flush\-frequency\fP=0
@@ -182,7 +182,7 @@ You can use 'openshift cli status' to check the progress.
 
 .PP
 \fB\-n\fP, \fB\-\-namespace\fP=""
-    If present, the namespace scope for this CLI request.
+    If present, the namespace scope for this CLI request
 
 .PP
 \fB\-\-server\fP=""
@@ -190,7 +190,7 @@ You can use 'openshift cli status' to check the progress.
 
 .PP
 \fB\-\-token\fP=""
-    Bearer token for authentication to the API server.
+    Bearer token for authentication to the API server
 
 .PP
 \fB\-\-user\fP=""
@@ -205,9 +205,6 @@ You can use 'openshift cli status' to check the progress.
 
   # List all local templates and image streams that can be used to create an app
   openshift cli new\-app \-\-list
-
-  # Search all templates, image streams, and Docker images for the ones that match "ruby"
-  openshift cli new\-app \-\-search ruby
 
   # Create an application based on the source code in the current git repository (with a public remote)
   # and a Docker image
@@ -234,10 +231,10 @@ You can use 'openshift cli status' to check the progress.
   # Create an application based on a template file, explicitly setting a parameter value
   openshift cli new\-app \-\-file=./example/myapp/template.json \-\-param=MYSQL\_USER=admin
 
-  # Search for "mysql" in all image repositories and stored templates
-  openshift cli new\-app \-\-search mysql
+  # Search all templates, image streams, and Docker images for the ones that match "ruby"
+  openshift cli new\-app \-\-search ruby
 
-  # Search for "ruby", but only in stored templates (\-\-template, \-\-image and \-\-docker\-image
+  # Search for "ruby", but only in stored templates (\-\-template, \-\-image\-stream and \-\-docker\-image
   # can be used to filter search results)
   openshift cli new\-app \-\-search \-\-template=ruby
 

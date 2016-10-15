@@ -35,6 +35,7 @@ dnsDomain: ""
 dnsIP: ""
 dockerConfig:
   execHandlerName: ""
+enableUnidling: false
 imageConfig:
   format: ""
   latest: false
@@ -44,6 +45,7 @@ masterClientConnectionOverrides: null
 masterKubeConfig: ""
 networkConfig:
   mtu: 0
+  networkPluginName: ""
 nodeIP: ""
 nodeName: ""
 podManifestConfig:
@@ -152,7 +154,7 @@ imagePolicyConfig:
   maxScheduledImageImportsPerMinute: 0
   scheduledImageImportMinimumIntervalSeconds: 0
 jenkinsPipelineConfig:
-  enabled: null
+  autoProvisionEnabled: null
   parameters: null
   serviceName: ""
   templateName: ""
@@ -184,6 +186,7 @@ kubernetesMasterConfig:
   proxyClientInfo:
     certFile: ""
     keyFile: ""
+  schedulerArguments: null
   schedulerConfigFile: ""
   servicesNodePortRange: ""
   servicesSubnet: ""
@@ -198,6 +201,7 @@ networkConfig:
   clusterNetworkCIDR: ""
   externalIPNetworkCIDRs: null
   hostSubnetLength: 0
+  ingressIPNetworkCIDR: ""
   networkPluginName: ""
   serviceNetworkCIDR: ""
 oauthConfig:

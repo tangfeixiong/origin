@@ -1,12 +1,5 @@
 #!/bin/bash
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/lib/init.sh"
-os::log::stacktrace::install
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 trap os::test::junit::reconcile_output EXIT
 
 # Cleanup cluster resources created by this test
@@ -72,7 +65,7 @@ os::cmd::expect_failure_and_text 'oc new-build ruby-22-centos7~https://github.co
 os::cmd::expect_success 'oc delete all --all'
 
 os::cmd::expect_success "oc new-build -D \$'FROM centos:7' --no-output"
-os::cmd::expect_success_and_text 'oc get bc/centos -o=jsonpath="{.spec.output.to}"' '^<nil>$'
+os::cmd::expect_success_and_text 'oc get bc/centos -o=jsonpath="{.spec.output.to}"' '^nil$'
 
 # Ensure output is valid JSON
 os::cmd::expect_success 'oc new-build -D "FROM centos:7" -o json | python -m json.tool'
@@ -126,41 +119,14 @@ os::cmd::expect_success 'oc delete all -l build=docker'
 echo "buildConfig: ok"
 os::test::junit::declare_suite_end
 
-os::test::junit::declare_suite_start "cmd/builds/setbuildhook"
-# Validate the set build-hook command
-arg="-f test/testdata/test-bc.yaml"
-os::cmd::expect_failure_and_text "oc set build-hook" "error: one or more build configs"
-os::cmd::expect_failure_and_text "oc set build-hook ${arg}" "error: you must specify a type of hook"
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" 'postCommit:'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" 'args:'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" '\- echo'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" '\- hello world'
-os::cmd::expect_success_and_not_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" 'command:'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit --command -o yaml -- echo 'hello world'" 'command:'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml --script='echo \"hello world\"'" 'script: echo \"hello world\"'
-# Server object tests
-os::cmd::expect_success "oc create -f test/testdata/test-bc.yaml"
-os::cmd::expect_failure_and_text "oc set build-hook bc/test-buildconfig --post-commit" "you must specify either a script or command"
-os::cmd::expect_success_and_text "oc set build-hook test-buildconfig --post-commit -- echo 'hello world'" "updated"
-os::cmd::expect_success_and_text "oc set build-hook bc/test-buildconfig --post-commit -- echo 'hello world'" "was not changed"
-os::cmd::expect_success_and_text "oc get bc/test-buildconfig -o yaml" "args:"
-os::cmd::expect_success_and_text "oc set build-hook bc/test-buildconfig --post-commit --command -- /bin/bash -c \"echo 'test'\"" "updated"
-os::cmd::expect_success_and_text "oc get bc/test-buildconfig -o yaml" "command:"
-os::cmd::expect_success_and_text "oc set build-hook --all --post-commit -- echo 'all bc'" "updated"
-os::cmd::expect_success_and_text "oc get bc -o yaml" "all bc"
-os::cmd::expect_success_and_text "oc set build-hook bc/test-buildconfig --post-commit --remove" "updated"
-os::cmd::expect_success_and_not_text "oc get bc/test-buildconfig -o yaml" "args:"
-os::cmd::expect_success "oc delete bc/test-buildconfig"
-echo "set build-hook: ok"
-os::test::junit::declare_suite_end
-
 os::test::junit::declare_suite_start "cmd/builds/start-build"
 os::cmd::expect_success 'oc create -f test/integration/testdata/test-buildcli.json'
 # a build for which there is not an upstream tag in the corresponding imagerepo, so
 # the build should use the image field as defined in the buildconfig
-started="$(oc start-build ruby-sample-build-invalidtag)"
+# Use basename to transform "build/build-name" into "build-name"
+started="$(basename $(oc start-build -o=name ruby-sample-build-invalidtag))"
 os::cmd::expect_success_and_text "oc describe build ${started}" 'centos/ruby-22-centos7$'
-frombuild="$(oc start-build --from-build="${started}")"
+frombuild="$(basename $(oc start-build -o=name --from-build="${started}"))"
 os::cmd::expect_success_and_text "oc describe build ${frombuild}" 'centos/ruby-22-centos7$'
 os::cmd::expect_failure_and_text "oc start-build ruby-sample-build-invalid-tag --from-dir=. --from-build=${started}" "Cannot use '--from-build' flag with binary builds"
 os::cmd::expect_failure_and_text "oc start-build ruby-sample-build-invalid-tag --from-file=. --from-build=${started}" "Cannot use '--from-build' flag with binary builds"
@@ -180,9 +146,9 @@ os::cmd::expect_success 'oc cancel-build build/ruby-sample-build-1'
 # Cancel all builds from a build configuration
 os::cmd::expect_success "oc start-build bc/ruby-sample-build"
 os::cmd::expect_success "oc start-build bc/ruby-sample-build"
-lastbuild=$(oc start-build bc/ruby-sample-build)
-os::cmd::expect_success_and_text 'oc cancel-build bc/ruby-sample-build', "build \"${lastbuild}\" cancelled"
-os::cmd::expect_success_and_text "oc get builds ${lastbuild} -o template --template '{{.status.phase}}'", 'Cancelled'
+lastbuild="$(basename $(oc start-build -o=name bc/ruby-sample-build))"
+os::cmd::expect_success_and_text 'oc cancel-build bc/ruby-sample-build', "\"${lastbuild}\" cancelled"
+os::cmd::expect_success_and_text "oc get build ${lastbuild} -o template --template '{{.status.phase}}'", 'Cancelled'
 builds=$(oc get builds -o template --template '{{range .items}}{{ .status.phase }} {{end}}')
 for state in $builds; do
   os::cmd::expect_success "[ \"${state}\" == \"Cancelled\" ]"

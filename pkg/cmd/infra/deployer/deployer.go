@@ -69,7 +69,7 @@ func NewCommandDeployer(name string) *cobra.Command {
 		Long:  deployerLong,
 		Run: func(c *cobra.Command, args []string) {
 			cfg.Out = os.Stdout
-			cfg.ErrOut = c.Out()
+			cfg.ErrOut = c.OutOrStderr()
 			err := cfg.RunDeployer()
 			if strategy.IsConditionReached(err) {
 				fmt.Fprintf(os.Stdout, "--> %s\n", err.Error())
@@ -207,7 +207,7 @@ func (d *Deployer) Deploy(namespace, rcName string) error {
 		if candidate.Name == to.Name {
 			continue
 		}
-		if deployutil.DeploymentStatusFor(&candidate) == deployapi.DeploymentStatusComplete {
+		if deployutil.IsCompleteDeployment(&candidate) {
 			from = &candidate
 			break
 		}

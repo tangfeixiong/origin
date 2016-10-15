@@ -1,12 +1,5 @@
 #!/bin/bash
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/lib/init.sh"
-os::log::stacktrace::install
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 trap os::test::junit::reconcile_output EXIT
 
 # Cleanup cluster resources created by this test
@@ -33,9 +26,9 @@ os::test::junit::declare_suite_end
 os::test::junit::declare_suite_start "cmd/migrate/imagereferences"
 # create alternating items in history
 os::cmd::expect_success 'oc import-image --from=mysql:latest test:1 --confirm'
+os::cmd::expect_success 'oc import-image --from=php:latest test:2 --confirm'
 os::cmd::expect_success 'oc tag --source=docker php:latest test:1'
 os::cmd::expect_success 'oc tag --source=docker mysql:latest test:1'
-os::cmd::expect_success 'oc import-image --from=php:latest test:2 --confirm'
 os::cmd::expect_success 'oc tag --source=docker mysql:latest test:2'
 os::cmd::expect_success 'oc tag --source=docker php:latest test:2'
 os::cmd::expect_success 'oc tag --source=docker myregistry.com/php:latest test:3'

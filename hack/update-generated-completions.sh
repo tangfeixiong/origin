@@ -1,15 +1,8 @@
 #!/bin/bash
 
-# This script sets up a go workspace locally and builds all go components.
+# This script sets up a go workspace locally and generates shell auto-completion scripts.
 
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/lib/init.sh"
-
-cd ${OS_ROOT}
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 # ensure we have the latest compiled binaries
 "${OS_ROOT}/hack/build-go.sh"

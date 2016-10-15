@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -13,11 +12,12 @@ import (
 	osapi "github.com/openshift/origin/pkg/sdn/api"
 	"github.com/openshift/origin/pkg/util/ipcmd"
 	"github.com/openshift/origin/pkg/util/netutils"
-	"github.com/openshift/origin/pkg/util/ovs"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	kexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/sysctl"
+	utilwait "k8s.io/kubernetes/pkg/util/wait"
 )
 
 const (
@@ -48,11 +48,41 @@ func getPluginVersion(multitenant bool) []string {
 	return []string{"00", version}
 }
 
-func alreadySetUp(multitenant bool, localSubnetGatewayCIDR string) bool {
+func (plugin *OsdnNode) getLocalSubnet() (string, error) {
+	var subnet *osapi.HostSubnet
+	backoff := utilwait.Backoff{
+		Duration: 100 * time.Millisecond,
+		Factor:   2,
+		Steps:    8,
+	}
+	err := utilwait.ExponentialBackoff(backoff, func() (bool, error) {
+		var err error
+		subnet, err = plugin.osClient.HostSubnets().Get(plugin.hostName)
+		if err == nil {
+			return true, nil
+		} else if kapierrors.IsNotFound(err) {
+			glog.Warningf("Could not find an allocated subnet for node: %s, Waiting...", plugin.hostName)
+			return false, nil
+		} else {
+			return false, err
+		}
+	})
+	if err != nil {
+		return "", fmt.Errorf("Failed to get subnet for this host: %s, error: %v", plugin.hostName, err)
+	}
+
+	if err = plugin.networkInfo.validateNodeIP(subnet.HostIP); err != nil {
+		return "", fmt.Errorf("Failed to validate own HostSubnet: %v", err)
+	}
+
+	return subnet.Subnet, nil
+}
+
+func (plugin *OsdnNode) alreadySetUp(localSubnetGatewayCIDR, clusterNetworkCIDR string) bool {
 	var found bool
 
-	kexec := kexec.New()
-	itx := ipcmd.NewTransaction(kexec, LBR)
+	exec := kexec.New()
+	itx := ipcmd.NewTransaction(exec, LBR)
 	addrs, err := itx.GetAddresses()
 	itx.EndTransaction()
 	if err != nil {
@@ -68,10 +98,24 @@ func alreadySetUp(multitenant bool, localSubnetGatewayCIDR string) bool {
 	if !found {
 		return false
 	}
+	itx = ipcmd.NewTransaction(exec, TUN)
+	routes, err := itx.GetRoutes()
+	itx.EndTransaction()
+	if err != nil {
+		return false
+	}
+	found = false
+	for _, route := range routes {
+		if strings.Contains(route, clusterNetworkCIDR+" ") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return false
+	}
 
-	otx := ovs.NewTransaction(kexec, BR)
-	flows, err := otx.DumpFlows()
-	otx.EndTransaction()
+	flows, err := plugin.ovs.DumpFlows()
 	if err != nil {
 		return false
 	}
@@ -88,7 +132,7 @@ func alreadySetUp(multitenant bool, localSubnetGatewayCIDR string) bool {
 		// OVS note action format hex bytes separated by '.'; first
 		// byte is plugin type (multi-tenant/single-tenant) and second
 		// byte is flow rule version
-		expected := getPluginVersion(multitenant)
+		expected := getPluginVersion(plugin.multitenant)
 		existing := strings.Split(flow[idx+len(VERSION_ACTION):], ".")
 		if len(existing) >= 2 && existing[0] == expected[0] && existing[1] == expected[1] {
 			found = true
@@ -103,36 +147,43 @@ func alreadySetUp(multitenant bool, localSubnetGatewayCIDR string) bool {
 }
 
 func deleteLocalSubnetRoute(device, localSubnetCIDR string) {
-	const (
-		timeInterval = 100 * time.Millisecond
-		maxIntervals = 20
-	)
-
-	for i := 0; i < maxIntervals; i++ {
+	backoff := utilwait.Backoff{
+		Duration: 100 * time.Millisecond,
+		Factor:   1.25,
+		Steps:    6,
+	}
+	err := utilwait.ExponentialBackoff(backoff, func() (bool, error) {
 		itx := ipcmd.NewTransaction(kexec.New(), device)
 		routes, err := itx.GetRoutes()
 		if err != nil {
-			glog.Errorf("Could not get routes for dev %s: %v", device, err)
-			return
+			return false, fmt.Errorf("could not get routes: %v", err)
 		}
 		for _, route := range routes {
 			if strings.Contains(route, localSubnetCIDR) {
 				itx.DeleteRoute(localSubnetCIDR)
 				err = itx.EndTransaction()
 				if err != nil {
-					glog.Errorf("Could not delete subnet route %s from dev %s: %v", localSubnetCIDR, device, err)
+					return false, fmt.Errorf("could not delete route: %v", err)
 				}
-				return
+				return true, nil
 			}
 		}
+		return false, nil
+	})
 
-		time.Sleep(timeInterval)
+	if err != nil {
+		glog.Errorf("Error removing %s route from dev %s: %v; if the route appears later it will not be deleted.", localSubnetCIDR, device, err)
 	}
-
-	glog.Errorf("Timed out looking for %s route for dev %s; if it appears later it will not be deleted.", localSubnetCIDR, device)
 }
 
-func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNetworkCIDR string, mtu uint32) (bool, error) {
+func (plugin *OsdnNode) SetupSDN() (bool, error) {
+	localSubnetCIDR, err := plugin.getLocalSubnet()
+	if err != nil {
+		return false, err
+	}
+	clusterNetworkCIDR := plugin.networkInfo.ClusterNetwork.String()
+	serviceNetworkCIDR := plugin.networkInfo.ServiceNetwork.String()
+
 	_, ipnet, err := net.ParseCIDR(localSubnetCIDR)
 	localSubnetMaskLength, _ := ipnet.Mask.Size()
 	localSubnetGateway := netutils.GenerateDefaultGateway(ipnet).String()
@@ -140,16 +191,16 @@ func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNe
 	glog.V(5).Infof("[SDN setup] node pod subnet %s gateway %s", ipnet.String(), localSubnetGateway)
 
 	gwCIDR := fmt.Sprintf("%s/%d", localSubnetGateway, localSubnetMaskLength)
-	if alreadySetUp(plugin.multitenant, gwCIDR) {
+	if plugin.alreadySetUp(gwCIDR, clusterNetworkCIDR) {
 		glog.V(5).Infof("[SDN setup] no SDN setup required")
 		return false, nil
 	}
 	glog.V(5).Infof("[SDN setup] full SDN setup required")
 
-	mtuStr := fmt.Sprint(mtu)
+	mtuStr := fmt.Sprint(plugin.mtu)
 
-	kexec := kexec.New()
-	itx := ipcmd.NewTransaction(kexec, LBR)
+	exec := kexec.New()
+	itx := ipcmd.NewTransaction(exec, LBR)
 	itx.SetLink("down")
 	itx.IgnoreError()
 	itx.DeleteLink()
@@ -179,7 +230,7 @@ func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNe
 		return false, err
 	}
 
-	itx = ipcmd.NewTransaction(kexec, VLINUXBR)
+	itx = ipcmd.NewTransaction(exec, VLINUXBR)
 	itx.DeleteLink()
 	itx.IgnoreError()
 	itx.AddLink("mtu", mtuStr, "type", "veth", "peer", "name", VOVSBR, "mtu", mtuStr)
@@ -190,7 +241,7 @@ func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNe
 		return false, err
 	}
 
-	itx = ipcmd.NewTransaction(kexec, VOVSBR)
+	itx = ipcmd.NewTransaction(exec, VOVSBR)
 	itx.SetLink("up")
 	itx.SetLink("txqueuelen", "0")
 	err = itx.EndTransaction()
@@ -198,19 +249,33 @@ func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNe
 		return false, err
 	}
 
-	itx = ipcmd.NewTransaction(kexec, LBR)
+	itx = ipcmd.NewTransaction(exec, LBR)
 	itx.AddSlave(VLINUXBR)
 	err = itx.EndTransaction()
 	if err != nil {
 		return false, err
 	}
 
-	otx := ovs.NewTransaction(kexec, BR)
-	otx.AddBridge("fail-mode=secure", "protocols=OpenFlow13")
-	otx.AddPort(VXLAN, 1, "type=vxlan", `options:remote_ip="flow"`, `options:key="flow"`)
-	otx.AddPort(TUN, 2, "type=internal")
-	otx.AddPort(VOVSBR, 3)
+	err = plugin.ovs.AddBridge("fail-mode=secure", "protocols=OpenFlow13")
+	if err != nil {
+		return false, err
+	}
+	_ = plugin.ovs.DeletePort(VXLAN)
+	_, err = plugin.ovs.AddPort(VXLAN, 1, "type=vxlan", `options:remote_ip="flow"`, `options:key="flow"`)
+	if err != nil {
+		return false, err
+	}
+	_ = plugin.ovs.DeletePort(TUN)
+	_, err = plugin.ovs.AddPort(TUN, 2, "type=internal")
+	if err != nil {
+		return false, err
+	}
+	_, err = plugin.ovs.AddPort(VOVSBR, 3)
+	if err != nil {
+		return false, err
+	}
 
+	otx := plugin.ovs.NewTransaction()
 	// Table 0: initial dispatch based on in_port
 	// vxlan0
 	otx.AddFlow("table=0, priority=200, in_port=1, arp, nw_src=%s, nw_dst=%s, actions=move:NXM_NX_TUN_ID[0..31]->NXM_NX_REG0[],goto_table:1", clusterNetworkCIDR, localSubnetCIDR)
@@ -240,7 +305,7 @@ func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNe
 	otx.AddFlow("table=2, priority=0, actions=drop")
 
 	// Table 3: from OpenShift container; service vs non-service
-	otx.AddFlow("table=3, priority=100, ip, nw_dst=%s, actions=goto_table:4", servicesNetworkCIDR)
+	otx.AddFlow("table=3, priority=100, ip, nw_dst=%s, actions=goto_table:4", serviceNetworkCIDR)
 	otx.AddFlow("table=3, priority=0, actions=goto_table:5")
 
 	// Table 4: from OpenShift container; service dispatch; filled in by AddServiceRules()
@@ -255,7 +320,7 @@ func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNe
 	otx.AddFlow("table=5, priority=200, ip, nw_dst=%s, actions=goto_table:7", localSubnetCIDR)
 	otx.AddFlow("table=5, priority=100, arp, nw_dst=%s, actions=goto_table:8", clusterNetworkCIDR)
 	otx.AddFlow("table=5, priority=100, ip, nw_dst=%s, actions=goto_table:8", clusterNetworkCIDR)
-	otx.AddFlow("table=5, priority=0, ip, actions=output:2")
+	otx.AddFlow("table=5, priority=0, ip, actions=goto_table:9")
 	otx.AddFlow("table=5, priority=0, arp, actions=drop")
 
 	// Table 6: ARP to container, filled in by openshift-sdn-ovs
@@ -272,30 +337,36 @@ func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNe
 	// eg, "table=8, priority=100, ip, nw_dst=${remote_subnet_cidr}, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31], set_field:${remote_node_ip}->tun_dst,output:1"
 	otx.AddFlow("table=8, priority=0, actions=drop")
 
+	// Table 9: egress network policy dispatch; edited by updateEgressNetworkPolicyRules()
+	// eg, "table=9, reg0=${tenant_id}, priority=2, ip, nw_dst=${external_cidr}, actions=drop
+	otx.AddFlow("table=9, priority=0, actions=output:2")
+
 	err = otx.EndTransaction()
 	if err != nil {
 		return false, err
 	}
 
-	itx = ipcmd.NewTransaction(kexec, TUN)
+	itx = ipcmd.NewTransaction(exec, TUN)
 	itx.AddAddress(gwCIDR)
 	defer deleteLocalSubnetRoute(TUN, localSubnetCIDR)
 	itx.SetLink("mtu", mtuStr)
 	itx.SetLink("up")
 	itx.AddRoute(clusterNetworkCIDR, "proto", "kernel", "scope", "link")
-	itx.AddRoute(servicesNetworkCIDR)
+	itx.AddRoute(serviceNetworkCIDR)
 	err = itx.EndTransaction()
 	if err != nil {
 		return false, err
 	}
 
 	// Clean up docker0 since docker won't
-	itx = ipcmd.NewTransaction(kexec, "docker0")
+	itx = ipcmd.NewTransaction(exec, "docker0")
 	itx.SetLink("down")
 	itx.IgnoreError()
 	itx.DeleteLink()
 	itx.IgnoreError()
 	_ = itx.EndTransaction()
+
+	sysctl := sysctl.New()
 
 	// Disable iptables for linux bridges (and in particular lbr0), ignoring errors.
 	// (This has to have been performed in advance for docker-in-docker deployments,
@@ -319,7 +390,7 @@ func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNe
 	}
 
 	// Table 253: rule version; note action is hex bytes separated by '.'
-	otx = ovs.NewTransaction(kexec, BR)
+	otx = plugin.ovs.NewTransaction()
 	pluginVersion := getPluginVersion(plugin.multitenant)
 	otx.AddFlow("%s, %s%s.%s", VERSION_TABLE, VERSION_ACTION, pluginVersion[0], pluginVersion[1])
 	err = otx.EndTransaction()
@@ -330,9 +401,68 @@ func (plugin *OsdnNode) SetupSDN(localSubnetCIDR, clusterNetworkCIDR, servicesNe
 	return true, nil
 }
 
+func policyNames(policies []*osapi.EgressNetworkPolicy) string {
+	names := make([]string, len(policies))
+	for i, policy := range policies {
+		names[i] = policy.Namespace + ":" + policy.Name
+	}
+	return strings.Join(names, ", ")
+}
+
+func (plugin *OsdnNode) updateEgressNetworkPolicyRules(vnid uint32) error {
+	otx := plugin.ovs.NewTransaction()
+
+	policies := plugin.egressPolicies[vnid]
+	namespaces := plugin.vnids.GetNamespaces(vnid)
+	if len(policies) == 0 {
+		otx.DeleteFlows("table=9, reg0=%d", vnid)
+	} else if vnid == 0 {
+		glog.Errorf("EgressNetworkPolicy in global network namespace is not allowed (%s); ignoring", policyNames(policies))
+	} else if len(namespaces) > 1 {
+		glog.Errorf("EgressNetworkPolicy not allowed in shared NetNamespace (%s); dropping all traffic", strings.Join(namespaces, ", "))
+		otx.DeleteFlows("table=9, reg0=%d", vnid)
+		otx.AddFlow("table=9, reg0=%d, priority=1, actions=drop", vnid)
+	} else if len(policies) > 1 {
+		glog.Errorf("multiple EgressNetworkPolicies in same network namespace (%s) is not allowed; dropping all traffic", policyNames(policies))
+		otx.DeleteFlows("table=9, reg0=%d", vnid)
+		otx.AddFlow("table=9, reg0=%d, priority=1, actions=drop", vnid)
+	} else /* vnid != 0 && len(policies) == 1 */ {
+		// Temporarily drop all outgoing traffic, to avoid race conditions while modifying the other rules
+		otx.AddFlow("table=9, reg0=%d, cookie=1, priority=65535, actions=drop", vnid)
+		otx.DeleteFlows("table=9, reg0=%d, cookie=0/1", vnid)
+
+		for i, rule := range policies[0].Spec.Egress {
+			priority := len(policies[0].Spec.Egress) - i
+
+			var action string
+			if rule.Type == osapi.EgressNetworkPolicyRuleAllow {
+				action = "output:2"
+			} else {
+				action = "drop"
+			}
+
+			var dst string
+			if rule.To.CIDRSelector == "0.0.0.0/32" {
+				dst = ""
+			} else {
+				dst = fmt.Sprintf(", nw_dst=%s", rule.To.CIDRSelector)
+			}
+
+			otx.AddFlow("table=9, reg0=%d, priority=%d, ip%s, actions=%s", vnid, priority, dst, action)
+		}
+		otx.DeleteFlows("table=9, reg0=%d, cookie=1/1", vnid)
+	}
+
+	err := otx.EndTransaction()
+	if err != nil {
+		return fmt.Errorf("Error updating OVS flows for EgressNetworkPolicy: %v", err)
+	}
+	return nil
+}
+
 func (plugin *OsdnNode) AddHostSubnetRules(subnet *osapi.HostSubnet) error {
 	glog.Infof("AddHostSubnetRules for %s", hostSubnetToString(subnet))
-	otx := ovs.NewTransaction(kexec.New(), BR)
+	otx := plugin.ovs.NewTransaction()
 
 	otx.AddFlow("table=1, priority=100, tun_src=%s, actions=goto_table:5", subnet.HostIP)
 	otx.AddFlow("table=8, priority=100, arp, nw_dst=%s, actions=move:NXM_NX_REG0[]->NXM_NX_TUN_ID[0..31],set_field:%s->tun_dst,output:1", subnet.Subnet, subnet.HostIP)
@@ -348,7 +478,7 @@ func (plugin *OsdnNode) AddHostSubnetRules(subnet *osapi.HostSubnet) error {
 func (plugin *OsdnNode) DeleteHostSubnetRules(subnet *osapi.HostSubnet) error {
 	glog.Infof("DeleteHostSubnetRules for %s", hostSubnetToString(subnet))
 
-	otx := ovs.NewTransaction(kexec.New(), BR)
+	otx := plugin.ovs.NewTransaction()
 	otx.DeleteFlows("table=1, tun_src=%s", subnet.HostIP)
 	otx.DeleteFlows("table=8, ip, nw_dst=%s", subnet.Subnet)
 	otx.DeleteFlows("table=8, arp, nw_dst=%s", subnet.Subnet)
@@ -366,7 +496,7 @@ func (plugin *OsdnNode) AddServiceRules(service *kapi.Service, netID uint32) err
 
 	glog.V(5).Infof("AddServiceRules for %v", service)
 
-	otx := ovs.NewTransaction(kexec.New(), BR)
+	otx := plugin.ovs.NewTransaction()
 	for _, port := range service.Spec.Ports {
 		otx.AddFlow(generateAddServiceRule(netID, service.Spec.ClusterIP, port.Protocol, int(port.Port)))
 		err := otx.EndTransaction()
@@ -384,7 +514,7 @@ func (plugin *OsdnNode) DeleteServiceRules(service *kapi.Service) error {
 
 	glog.V(5).Infof("DeleteServiceRules for %v", service)
 
-	otx := ovs.NewTransaction(kexec.New(), BR)
+	otx := plugin.ovs.NewTransaction()
 	for _, port := range service.Spec.Ports {
 		otx.DeleteFlows(generateDeleteServiceRule(service.Spec.ClusterIP, port.Protocol, int(port.Port)))
 		err := otx.EndTransaction()

@@ -151,7 +151,11 @@ func checkRemoteGit(gitClient GitClient, url string, initialTimeout time.Duratio
 // checkSourceURI performs a check on the URI associated with the build
 // to make sure that it is valid.
 func checkSourceURI(gitClient GitClient, rawurl string, timeout time.Duration) error {
-	if !s2igit.New().ValidCloneSpec(rawurl) {
+	ok, err := s2igit.New().ValidCloneSpec(rawurl)
+	if err != nil {
+		return fmt.Errorf("Invalid git source url %q: %v", rawurl, err)
+	}
+	if !ok {
 		return fmt.Errorf("Invalid git source url: %s", rawurl)
 	}
 	return checkRemoteGit(gitClient, rawurl, timeout)
@@ -199,22 +203,31 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 		return false, nil
 	}
 
-	glog.V(0).Infof("Downloading %q ...", gitSource.URI)
+	glog.V(0).Infof("Cloning %q ...", gitSource.URI)
 
-	// Check source URI, trying to connect to the server only if not using a proxy.
+	// Check source URI by trying to connect to the server
 	if err := checkSourceURI(gitClient, gitSource.URI, timeout); err != nil {
 		return true, err
 	}
 
-	// check if we specify a commit, ref, or branch to check out
-	usingRef := len(gitSource.Ref) != 0 || (revision != nil && revision.Git != nil && len(revision.Git.Commit) != 0)
+	cloneOptions := []string{}
+	usingRevision := revision != nil && revision.Git != nil && len(revision.Git.Commit) != 0
+	usingRef := len(gitSource.Ref) != 0 || usingRevision
 
+	// check if we specify a commit, ref, or branch to check out
 	// Recursive clone if we're not going to checkout a ref and submodule update later
+	if !usingRef {
+		cloneOptions = append(cloneOptions, "--recursive")
+		cloneOptions = append(cloneOptions, git.Shallow)
+	}
+
 	glog.V(3).Infof("Cloning source from %s", gitSource.URI)
 
 	// Only use the quiet flag if Verbosity is not 5 or greater
-	quiet := !glog.Is(5)
-	if err := gitClient.CloneWithOptions(dir, gitSource.URI, git.CloneOptions{Recursive: !usingRef, Quiet: quiet, Shallow: !usingRef}); err != nil {
+	if !glog.Is(5) {
+		cloneOptions = append(cloneOptions, "--quiet")
+	}
+	if err := gitClient.CloneWithOptions(dir, gitSource.URI, cloneOptions...); err != nil {
 		return true, err
 	}
 
@@ -222,7 +235,7 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 	if usingRef {
 		commit := gitSource.Ref
 
-		if revision != nil && revision.Git != nil && revision.Git.Commit != "" {
+		if usingRevision {
 			commit = revision.Git.Commit
 		}
 
@@ -233,6 +246,14 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 		// Recursively update --init
 		if err := gitClient.SubmoduleUpdate(dir, true, true); err != nil {
 			return true, err
+		}
+	}
+
+	if glog.Is(0) {
+		if information, gitErr := gitClient.GetInfo(dir); len(gitErr) == 0 {
+			glog.Infof("\tCommit:\t%s (%s)\n", information.CommitID, information.Message)
+			glog.Infof("\tAuthor:\t%s <%s>\n", information.AuthorName, information.AuthorEmail)
+			glog.Infof("\tDate:\t%s\n", information.Date)
 		}
 	}
 
@@ -267,6 +288,7 @@ func copyImageSource(dockerClient DockerClient, containerID, sourceDir, destDir 
 		Path:         sourceDir,
 	})
 	if err != nil {
+		tempFile.Close()
 		return err
 	}
 	if err := tempFile.Close(); err != nil {
@@ -313,7 +335,7 @@ func extractSourceFromImage(dockerClient DockerClient, image, buildDir string, i
 	exists := true
 	if !forcePull {
 		_, err := dockerClient.InspectImage(image)
-		if err != nil && err == docker.ErrNoSuchImage {
+		if err == docker.ErrNoSuchImage {
 			exists = false
 		} else if err != nil {
 			return err

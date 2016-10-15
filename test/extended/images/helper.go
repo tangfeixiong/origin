@@ -11,12 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	dockerclient "github.com/fsouza/go-dockerclient"
-	g "github.com/onsi/ginkgo"
-
-	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/image/api"
@@ -56,40 +52,6 @@ func GetImageLabels(c client.ImageStreamImageInterface, imageRepoName, imageRef 
 		return map[string]string{}, err
 	}
 	return image.Image.DockerImageMetadata.Config.Labels, nil
-}
-
-// RunInPodContainer will run provided command in the specified pod container.
-func RunInPodContainer(oc *exutil.CLI, selector labels.Selector, cmd []string) error {
-	pods, err := exutil.WaitForPods(oc.KubeREST().Pods(oc.Namespace()), selector, exutil.CheckPodIsRunningFn, 1, 2*time.Minute)
-	if err != nil {
-		return err
-	}
-	if len(pods) != 1 {
-		return fmt.Errorf("Got %d pods for selector %v, expected 1", len(pods), selector)
-	}
-
-	pod, err := oc.KubeREST().Pods(oc.Namespace()).Get(pods[0])
-	if err != nil {
-		return err
-	}
-	args := []string{pod.Name, "-c", pod.Spec.Containers[0].Name, "--"}
-	args = append(args, cmd...)
-	return oc.Run("exec").Args(args...).Execute()
-}
-
-// CheckPageContains makes a http request for an example application and checks
-// that the result contains given string
-func CheckPageContains(oc *exutil.CLI, endpoint, path, contents string) (bool, error) {
-	address, err := exutil.GetEndpointAddress(oc, endpoint)
-	if err != nil {
-		return false, err
-	}
-
-	response, err := exutil.FetchURL(fmt.Sprintf("http://%s/%s", address, path), 3*time.Minute)
-	if err != nil {
-		return false, err
-	}
-	return strings.Contains(response, contents), nil
 }
 
 // BuildAndPushImageOfSizeWithBuilder tries to build an image of wanted size and number of layers. Built image
@@ -145,22 +107,19 @@ func BuildAndPushImageOfSizeWithBuilder(
 		return err
 	}
 
-	out, err := oc.Run("start-build").Args(name, "--from-dir", tempDir, "--wait").Output()
-	fmt.Fprintf(g.GinkgoWriter, "\nstart-build output:\n%s\n", out)
+	br, _ := exutil.StartBuildAndWait(oc, name, "--from-dir", tempDir)
+	if shouldSucceed {
+		br.AssertSuccess()
+	} else {
+		br.AssertFailure()
+	}
+	buildLog, logsErr := br.Logs()
 
-	buildLog, logsErr := oc.Run("logs").Args("bc/" + name).Output()
 	if match := reSuccessfulBuild.FindStringSubmatch(buildLog); len(match) > 1 {
 		defer dClient.RemoveImageExtended(match[1], dockerclient.RemoveImageOptions{Force: true})
 	}
 
-	if shouldSucceed && err != nil {
-		return fmt.Errorf("Got unexpected build error: %v", err)
-	}
-
 	if !shouldSucceed {
-		if err == nil {
-			return fmt.Errorf("Build unexpectedly succeeded")
-		}
 		if logsErr != nil {
 			return fmt.Errorf("Failed to show log of build config %s: %v", name, err)
 		}
@@ -225,18 +184,17 @@ func BuildAndPushImageOfSizeWithDocker(
 
 	image, err := dClient.InspectImage(taggedName)
 	if err != nil {
-		return "", err
+		return
 	}
 
 	defer dClient.RemoveImageExtended(image.ID, dockerclient.RemoveImageOptions{Force: true})
-	digest := ""
 	if len(image.RepoDigests) == 1 {
-		digest = image.RepoDigests[0]
+		imageDigest = image.RepoDigests[0]
 	}
 
 	out, err := oc.Run("whoami").Args("-t").Output()
 	if err != nil {
-		return "", err
+		return
 	}
 	token := strings.TrimSpace(out)
 
@@ -259,15 +217,15 @@ func BuildAndPushImageOfSizeWithDocker(
 		if err != nil {
 			return "", fmt.Errorf("Got unexpected push error: %v", err)
 		}
-		if len(digest) == 0 {
+		if len(imageDigest) == 0 {
 			outSink.Write([]byte("matching digest string\n"))
 			match := rePushedImageDigest.FindStringSubmatch(out)
 			if len(match) < 2 {
-				return "", fmt.Errorf("Failed to parse digest")
+				return imageDigest, fmt.Errorf("Failed to parse digest")
 			}
-			digest = match[1]
+			imageDigest = match[1]
 		}
-		return digest, nil
+		return
 	}
 
 	if err == nil {

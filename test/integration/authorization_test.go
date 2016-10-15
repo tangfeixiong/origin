@@ -10,6 +10,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierror "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	kunvapi "k8s.io/kubernetes/pkg/api/unversioned"
 	extensionsapi "k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/wait"
@@ -26,6 +27,63 @@ import (
 	testutil "github.com/openshift/origin/test/util"
 	testserver "github.com/openshift/origin/test/util/server"
 )
+
+func prettyPrintAction(act *authorizationapi.Action, defaultNamespaceStr string) string {
+	nsStr := fmt.Sprintf("in namespace %q", act.Namespace)
+	if act.Namespace == "" {
+		nsStr = defaultNamespaceStr
+	}
+
+	var resourceStr string
+	if act.Group == "" && act.Version == "" {
+		resourceStr = act.Resource
+	} else {
+		groupVer := kunvapi.GroupVersion{Group: act.Group, Version: act.Version}
+		resourceStr = fmt.Sprintf("%s/%s", act.Resource, groupVer.String())
+	}
+
+	var base string
+	if act.ResourceName == "" {
+		base = fmt.Sprintf("who can %s %s %s", act.Verb, resourceStr, nsStr)
+	} else {
+		base = fmt.Sprintf("who can %s the %s named %q %s", act.Verb, resourceStr, act.ResourceName, nsStr)
+	}
+
+	if act.Content != nil {
+		return fmt.Sprintf("%s with content %#v", base, act.Content)
+	}
+
+	return base
+}
+
+func prettyPrintReviewResponse(resp *authorizationapi.ResourceAccessReviewResponse) string {
+	nsStr := fmt.Sprintf("(in the namespace %q)\n", resp.Namespace)
+	if resp.Namespace == "" {
+		nsStr = "(in all namespaces)\n"
+	}
+
+	var usersStr string
+	if resp.Users.Len() > 0 {
+		userStrList := make([]string, 0, len(resp.Users))
+		for userName := range resp.Users {
+			userStrList = append(userStrList, fmt.Sprintf("    - %s\n", userName))
+		}
+
+		usersStr = fmt.Sprintf("  users:\n%s", strings.Join(userStrList, ""))
+	}
+
+	var groupsStr string
+	if resp.Groups.Len() > 0 {
+		groupStrList := make([]string, 0, len(resp.Groups))
+		for groupName := range resp.Groups {
+			groupStrList = append(groupStrList, fmt.Sprintf("    - %s\n", groupName))
+		}
+
+		groupsStr = fmt.Sprintf("  groups:\n%s", strings.Join(groupStrList, ""))
+	}
+
+	return fmt.Sprintf(nsStr + usersStr + groupsStr)
+}
 
 func TestClusterReaderCoverage(t *testing.T) {
 	testutil.RequireEtcd(t)
@@ -98,7 +156,8 @@ func TestClusterReaderCoverage(t *testing.T) {
 	// remove resources without read APIs
 	nonreadingResources := []unversioned.GroupResource{
 		buildapi.Resource("buildconfigs/instantiatebinary"), buildapi.Resource("buildconfigs/instantiate"), buildapi.Resource("builds/clone"),
-		deployapi.Resource("deploymentconfigrollbacks"), deployapi.Resource("generatedeploymentconfigs"), deployapi.Resource("deploymentconfigs/rollback"),
+		deployapi.Resource("deploymentconfigrollbacks"), deployapi.Resource("generatedeploymentconfigs"),
+		deployapi.Resource("deploymentconfigs/rollback"), deployapi.Resource("deploymentconfigs/instantiate"),
 		imageapi.Resource("imagestreamimports"), imageapi.Resource("imagestreammappings"),
 		extensionsapi.Resource("deployments/rollback"),
 		kapi.Resource("pods/attach"), kapi.Resource("namespaces/finalize"),
@@ -224,8 +283,15 @@ func TestAuthorizationResolution(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// try to add Valerie to a non-existent role
-	if err := addValerie.AddRole(); !kapierror.IsNotFound(err) {
+	// try to add Valerie to a non-existent role, looping until it is true due to
+	// the policy cache taking time to react
+	if err := wait.Poll(time.Second, 2*time.Minute, func() (bool, error) {
+		err := addValerie.AddRole()
+		if kapierror.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -259,6 +325,17 @@ func TestAuthorizationResolution(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// the authorization cache may not be up to date, retry
+	if err := wait.Poll(10*time.Millisecond, 2*time.Minute, func() (bool, error) {
+		_, err := buildListerClient.Builds(kapi.NamespaceDefault).List(kapi.ListOptions{})
+		if kapierror.IsForbidden(err) {
+			return false, nil
+		}
+		return err == nil, err
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
 	if _, err := buildListerClient.Builds(kapi.NamespaceDefault).List(kapi.ListOptions{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -276,6 +353,9 @@ var globalClusterAdminGroups = sets.NewString("system:cluster-admins", "system:m
 // This list includes the admins from above, plus users or groups known to have global view access
 var globalClusterReaderUsers = sets.NewString("system:serviceaccount:openshift-infra:namespace-controller", "system:admin")
 var globalClusterReaderGroups = sets.NewString("system:cluster-readers", "system:cluster-admins", "system:masters")
+
+// this list includes any other users who can get DeploymentConfigs
+var globalDeploymentConfigGetterUsers = sets.NewString("system:serviceaccount:openshift-infra:unidling-controller")
 
 type resourceAccessReviewTest struct {
 	description     string
@@ -313,7 +393,7 @@ func (test resourceAccessReviewTest) run(t *testing.T) {
 			!reflect.DeepEqual(actualResponse.Users.List(), test.response.Users.List()) ||
 			!reflect.DeepEqual(actualResponse.Groups.List(), test.response.Groups.List()) ||
 			actualResponse.EvaluationError != test.response.EvaluationError {
-			failMessage = fmt.Sprintf("%s: %#v: expected %#v, got %#v", test.description, test.review, test.response, actualResponse)
+			failMessage = fmt.Sprintf("%s:\n  %s:\n  expected %s\n  got %s", test.description, prettyPrintAction(&test.review.Action, "(in any namespace)"), prettyPrintReviewResponse(&test.response), prettyPrintReviewResponse(actualResponse))
 			return false, nil
 		}
 
@@ -366,7 +446,7 @@ func (test localResourceAccessReviewTest) run(t *testing.T) {
 			!reflect.DeepEqual(actualResponse.Users.List(), test.response.Users.List()) ||
 			!reflect.DeepEqual(actualResponse.Groups.List(), test.response.Groups.List()) ||
 			actualResponse.EvaluationError != test.response.EvaluationError {
-			failMessage = fmt.Sprintf("%s: %#v: expected %#v, got %#v", test.description, test.review, test.response, actualResponse)
+			failMessage = fmt.Sprintf("%s:\n  %s:\n  expected %s\n  got %s", test.description, prettyPrintAction(&test.review.Action, "(in the current namespace)"), prettyPrintReviewResponse(&test.response), prettyPrintReviewResponse(actualResponse))
 			return false, nil
 		}
 
@@ -451,6 +531,7 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 			},
 		}
 		test.response.Users.Insert(globalClusterReaderUsers.List()...)
+		test.response.Users.Insert(globalDeploymentConfigGetterUsers.List()...)
 		test.response.Groups.Insert(globalClusterReaderGroups.List()...)
 		test.run(t)
 	}
@@ -466,6 +547,7 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 			},
 		}
 		test.response.Users.Insert(globalClusterReaderUsers.List()...)
+		test.response.Users.Insert(globalDeploymentConfigGetterUsers.List()...)
 		test.response.Groups.Insert(globalClusterReaderGroups.List()...)
 		test.run(t)
 	}
@@ -493,6 +575,7 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 			},
 		}
 		test.response.Users.Insert(globalClusterReaderUsers.List()...)
+		test.response.Users.Insert(globalDeploymentConfigGetterUsers.List()...)
 		test.response.Groups.Insert(globalClusterReaderGroups.List()...)
 		test.run(t)
 	}
@@ -513,6 +596,7 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 			},
 		}
 		test.response.Users.Insert(globalClusterReaderUsers.List()...)
+		test.response.Users.Insert(globalDeploymentConfigGetterUsers.List()...)
 		test.response.Groups.Insert(globalClusterReaderGroups.List()...)
 		test.run(t)
 	}
@@ -664,7 +748,7 @@ func TestAuthorizationSubjectAccessReviewAPIGroup(t *testing.T) {
 		},
 		response: authorizationapi.SubjectAccessReviewResponse{
 			Allowed:   true,
-			Reason:    "allowed by cluster rule",
+			Reason:    "allowed by rule in any-project",
 			Namespace: "any-project",
 		},
 	}.run(t)
@@ -676,7 +760,7 @@ func TestAuthorizationSubjectAccessReviewAPIGroup(t *testing.T) {
 		},
 		response: authorizationapi.SubjectAccessReviewResponse{
 			Allowed:   true,
-			Reason:    "allowed by cluster rule",
+			Reason:    "allowed by rule in any-project",
 			Namespace: "any-project",
 		},
 	}.run(t)
@@ -688,7 +772,7 @@ func TestAuthorizationSubjectAccessReviewAPIGroup(t *testing.T) {
 		},
 		response: authorizationapi.SubjectAccessReviewResponse{
 			Allowed:   true,
-			Reason:    "allowed by cluster rule",
+			Reason:    "allowed by rule in any-project",
 			Namespace: "any-project",
 		},
 	}.run(t)
@@ -700,7 +784,7 @@ func TestAuthorizationSubjectAccessReviewAPIGroup(t *testing.T) {
 		},
 		response: authorizationapi.SubjectAccessReviewResponse{
 			Allowed:   true,
-			Reason:    "allowed by cluster rule",
+			Reason:    "allowed by rule in any-project",
 			Namespace: "any-project",
 		},
 	}.run(t)
@@ -974,6 +1058,7 @@ func TestAuthorizationSubjectAccessReview(t *testing.T) {
 	}.run(t)
 
 	// test checking self-permissions doesn't leak whether namespace exists or not
+	// We carry a patch to allow this
 	subjectAccessReviewTest{
 		description:    "harold told he cannot create pods in project nonexistent-project",
 		localInterface: haroldClient.LocalSubjectAccessReviews("nonexistent-project"),

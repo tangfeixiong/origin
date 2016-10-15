@@ -21,6 +21,7 @@ import (
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	projectapi "github.com/openshift/origin/pkg/project/api"
 	routeapi "github.com/openshift/origin/pkg/route/api"
+	sdnapi "github.com/openshift/origin/pkg/sdn/api"
 	templateapi "github.com/openshift/origin/pkg/template/api"
 
 	// install all APIs
@@ -122,8 +123,10 @@ func TestExampleObjectSchemas(t *testing.T) {
 			"test-image-stream-mapping":           nil, // skip &imageapi.ImageStreamMapping{},
 			"test-route":                          &routeapi.Route{},
 			"test-service":                        &kapi.Service{},
+			"test-service-with-finalizer":         &kapi.Service{},
 			"test-buildcli":                       &kapi.List{},
 			"test-buildcli-beta2":                 &kapi.List{},
+			"test-egress-network-policy":          &sdnapi.EgressNetworkPolicy{},
 		},
 		"../test/templates/testdata": {
 			"crunchydata-pod": nil, // Explicitly fails validation, but should pass transformation

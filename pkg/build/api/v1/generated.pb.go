@@ -39,9 +39,11 @@
 		GitSourceRevision
 		ImageChangeCause
 		ImageChangeTrigger
+		ImageLabel
 		ImageSource
 		ImageSourcePath
 		JenkinsPipelineBuildStrategy
+		ProxyConfig
 		SecretBuildSource
 		SecretSpec
 		SourceBuildStrategy
@@ -60,6 +62,9 @@ import k8s_io_kubernetes_pkg_api_v1 "k8s.io/kubernetes/pkg/api/v1"
 
 import time "time"
 
+import strings "strings"
+import reflect "reflect"
+
 import io "io"
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -67,161 +72,177 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-func (m *BinaryBuildRequestOptions) Reset()         { *m = BinaryBuildRequestOptions{} }
-func (m *BinaryBuildRequestOptions) String() string { return proto.CompactTextString(m) }
-func (*BinaryBuildRequestOptions) ProtoMessage()    {}
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+const _ = proto.GoGoProtoPackageIsVersion1
 
-func (m *BinaryBuildSource) Reset()         { *m = BinaryBuildSource{} }
-func (m *BinaryBuildSource) String() string { return proto.CompactTextString(m) }
-func (*BinaryBuildSource) ProtoMessage()    {}
+func (m *BinaryBuildRequestOptions) Reset()      { *m = BinaryBuildRequestOptions{} }
+func (*BinaryBuildRequestOptions) ProtoMessage() {}
+func (*BinaryBuildRequestOptions) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{0}
+}
 
-func (m *Build) Reset()         { *m = Build{} }
-func (m *Build) String() string { return proto.CompactTextString(m) }
-func (*Build) ProtoMessage()    {}
+func (m *BinaryBuildSource) Reset()                    { *m = BinaryBuildSource{} }
+func (*BinaryBuildSource) ProtoMessage()               {}
+func (*BinaryBuildSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{1} }
 
-func (m *BuildConfig) Reset()         { *m = BuildConfig{} }
-func (m *BuildConfig) String() string { return proto.CompactTextString(m) }
-func (*BuildConfig) ProtoMessage()    {}
+func (m *Build) Reset()                    { *m = Build{} }
+func (*Build) ProtoMessage()               {}
+func (*Build) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{2} }
 
-func (m *BuildConfigList) Reset()         { *m = BuildConfigList{} }
-func (m *BuildConfigList) String() string { return proto.CompactTextString(m) }
-func (*BuildConfigList) ProtoMessage()    {}
+func (m *BuildConfig) Reset()                    { *m = BuildConfig{} }
+func (*BuildConfig) ProtoMessage()               {}
+func (*BuildConfig) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{3} }
 
-func (m *BuildConfigSpec) Reset()         { *m = BuildConfigSpec{} }
-func (m *BuildConfigSpec) String() string { return proto.CompactTextString(m) }
-func (*BuildConfigSpec) ProtoMessage()    {}
+func (m *BuildConfigList) Reset()                    { *m = BuildConfigList{} }
+func (*BuildConfigList) ProtoMessage()               {}
+func (*BuildConfigList) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{4} }
 
-func (m *BuildConfigStatus) Reset()         { *m = BuildConfigStatus{} }
-func (m *BuildConfigStatus) String() string { return proto.CompactTextString(m) }
-func (*BuildConfigStatus) ProtoMessage()    {}
+func (m *BuildConfigSpec) Reset()                    { *m = BuildConfigSpec{} }
+func (*BuildConfigSpec) ProtoMessage()               {}
+func (*BuildConfigSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{5} }
 
-func (m *BuildList) Reset()         { *m = BuildList{} }
-func (m *BuildList) String() string { return proto.CompactTextString(m) }
-func (*BuildList) ProtoMessage()    {}
+func (m *BuildConfigStatus) Reset()                    { *m = BuildConfigStatus{} }
+func (*BuildConfigStatus) ProtoMessage()               {}
+func (*BuildConfigStatus) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{6} }
 
-func (m *BuildLog) Reset()         { *m = BuildLog{} }
-func (m *BuildLog) String() string { return proto.CompactTextString(m) }
-func (*BuildLog) ProtoMessage()    {}
+func (m *BuildList) Reset()                    { *m = BuildList{} }
+func (*BuildList) ProtoMessage()               {}
+func (*BuildList) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{7} }
 
-func (m *BuildLogOptions) Reset()         { *m = BuildLogOptions{} }
-func (m *BuildLogOptions) String() string { return proto.CompactTextString(m) }
-func (*BuildLogOptions) ProtoMessage()    {}
+func (m *BuildLog) Reset()                    { *m = BuildLog{} }
+func (*BuildLog) ProtoMessage()               {}
+func (*BuildLog) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{8} }
 
-func (m *BuildOutput) Reset()         { *m = BuildOutput{} }
-func (m *BuildOutput) String() string { return proto.CompactTextString(m) }
-func (*BuildOutput) ProtoMessage()    {}
+func (m *BuildLogOptions) Reset()                    { *m = BuildLogOptions{} }
+func (*BuildLogOptions) ProtoMessage()               {}
+func (*BuildLogOptions) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{9} }
 
-func (m *BuildPostCommitSpec) Reset()         { *m = BuildPostCommitSpec{} }
-func (m *BuildPostCommitSpec) String() string { return proto.CompactTextString(m) }
-func (*BuildPostCommitSpec) ProtoMessage()    {}
+func (m *BuildOutput) Reset()                    { *m = BuildOutput{} }
+func (*BuildOutput) ProtoMessage()               {}
+func (*BuildOutput) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{10} }
 
-func (m *BuildRequest) Reset()         { *m = BuildRequest{} }
-func (m *BuildRequest) String() string { return proto.CompactTextString(m) }
-func (*BuildRequest) ProtoMessage()    {}
+func (m *BuildPostCommitSpec) Reset()                    { *m = BuildPostCommitSpec{} }
+func (*BuildPostCommitSpec) ProtoMessage()               {}
+func (*BuildPostCommitSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{11} }
 
-func (m *BuildSource) Reset()         { *m = BuildSource{} }
-func (m *BuildSource) String() string { return proto.CompactTextString(m) }
-func (*BuildSource) ProtoMessage()    {}
+func (m *BuildRequest) Reset()                    { *m = BuildRequest{} }
+func (*BuildRequest) ProtoMessage()               {}
+func (*BuildRequest) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{12} }
 
-func (m *BuildSpec) Reset()         { *m = BuildSpec{} }
-func (m *BuildSpec) String() string { return proto.CompactTextString(m) }
-func (*BuildSpec) ProtoMessage()    {}
+func (m *BuildSource) Reset()                    { *m = BuildSource{} }
+func (*BuildSource) ProtoMessage()               {}
+func (*BuildSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{13} }
 
-func (m *BuildStatus) Reset()         { *m = BuildStatus{} }
-func (m *BuildStatus) String() string { return proto.CompactTextString(m) }
-func (*BuildStatus) ProtoMessage()    {}
+func (m *BuildSpec) Reset()                    { *m = BuildSpec{} }
+func (*BuildSpec) ProtoMessage()               {}
+func (*BuildSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{14} }
 
-func (m *BuildStrategy) Reset()         { *m = BuildStrategy{} }
-func (m *BuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*BuildStrategy) ProtoMessage()    {}
+func (m *BuildStatus) Reset()                    { *m = BuildStatus{} }
+func (*BuildStatus) ProtoMessage()               {}
+func (*BuildStatus) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{15} }
 
-func (m *BuildTriggerCause) Reset()         { *m = BuildTriggerCause{} }
-func (m *BuildTriggerCause) String() string { return proto.CompactTextString(m) }
-func (*BuildTriggerCause) ProtoMessage()    {}
+func (m *BuildStrategy) Reset()                    { *m = BuildStrategy{} }
+func (*BuildStrategy) ProtoMessage()               {}
+func (*BuildStrategy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{16} }
 
-func (m *BuildTriggerPolicy) Reset()         { *m = BuildTriggerPolicy{} }
-func (m *BuildTriggerPolicy) String() string { return proto.CompactTextString(m) }
-func (*BuildTriggerPolicy) ProtoMessage()    {}
+func (m *BuildTriggerCause) Reset()                    { *m = BuildTriggerCause{} }
+func (*BuildTriggerCause) ProtoMessage()               {}
+func (*BuildTriggerCause) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{17} }
 
-func (m *CommonSpec) Reset()         { *m = CommonSpec{} }
-func (m *CommonSpec) String() string { return proto.CompactTextString(m) }
-func (*CommonSpec) ProtoMessage()    {}
+func (m *BuildTriggerPolicy) Reset()                    { *m = BuildTriggerPolicy{} }
+func (*BuildTriggerPolicy) ProtoMessage()               {}
+func (*BuildTriggerPolicy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{18} }
 
-func (m *CustomBuildStrategy) Reset()         { *m = CustomBuildStrategy{} }
-func (m *CustomBuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*CustomBuildStrategy) ProtoMessage()    {}
+func (m *CommonSpec) Reset()                    { *m = CommonSpec{} }
+func (*CommonSpec) ProtoMessage()               {}
+func (*CommonSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{19} }
 
-func (m *DockerBuildStrategy) Reset()         { *m = DockerBuildStrategy{} }
-func (m *DockerBuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*DockerBuildStrategy) ProtoMessage()    {}
+func (m *CustomBuildStrategy) Reset()                    { *m = CustomBuildStrategy{} }
+func (*CustomBuildStrategy) ProtoMessage()               {}
+func (*CustomBuildStrategy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{20} }
 
-func (m *GenericWebHookCause) Reset()         { *m = GenericWebHookCause{} }
-func (m *GenericWebHookCause) String() string { return proto.CompactTextString(m) }
-func (*GenericWebHookCause) ProtoMessage()    {}
+func (m *DockerBuildStrategy) Reset()                    { *m = DockerBuildStrategy{} }
+func (*DockerBuildStrategy) ProtoMessage()               {}
+func (*DockerBuildStrategy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{21} }
 
-func (m *GenericWebHookEvent) Reset()         { *m = GenericWebHookEvent{} }
-func (m *GenericWebHookEvent) String() string { return proto.CompactTextString(m) }
-func (*GenericWebHookEvent) ProtoMessage()    {}
+func (m *GenericWebHookCause) Reset()                    { *m = GenericWebHookCause{} }
+func (*GenericWebHookCause) ProtoMessage()               {}
+func (*GenericWebHookCause) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{22} }
 
-func (m *GitBuildSource) Reset()         { *m = GitBuildSource{} }
-func (m *GitBuildSource) String() string { return proto.CompactTextString(m) }
-func (*GitBuildSource) ProtoMessage()    {}
+func (m *GenericWebHookEvent) Reset()                    { *m = GenericWebHookEvent{} }
+func (*GenericWebHookEvent) ProtoMessage()               {}
+func (*GenericWebHookEvent) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{23} }
 
-func (m *GitHubWebHookCause) Reset()         { *m = GitHubWebHookCause{} }
-func (m *GitHubWebHookCause) String() string { return proto.CompactTextString(m) }
-func (*GitHubWebHookCause) ProtoMessage()    {}
+func (m *GitBuildSource) Reset()                    { *m = GitBuildSource{} }
+func (*GitBuildSource) ProtoMessage()               {}
+func (*GitBuildSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{24} }
 
-func (m *GitInfo) Reset()         { *m = GitInfo{} }
-func (m *GitInfo) String() string { return proto.CompactTextString(m) }
-func (*GitInfo) ProtoMessage()    {}
+func (m *GitHubWebHookCause) Reset()                    { *m = GitHubWebHookCause{} }
+func (*GitHubWebHookCause) ProtoMessage()               {}
+func (*GitHubWebHookCause) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{25} }
 
-func (m *GitSourceRevision) Reset()         { *m = GitSourceRevision{} }
-func (m *GitSourceRevision) String() string { return proto.CompactTextString(m) }
-func (*GitSourceRevision) ProtoMessage()    {}
+func (m *GitInfo) Reset()                    { *m = GitInfo{} }
+func (*GitInfo) ProtoMessage()               {}
+func (*GitInfo) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{26} }
 
-func (m *ImageChangeCause) Reset()         { *m = ImageChangeCause{} }
-func (m *ImageChangeCause) String() string { return proto.CompactTextString(m) }
-func (*ImageChangeCause) ProtoMessage()    {}
+func (m *GitSourceRevision) Reset()                    { *m = GitSourceRevision{} }
+func (*GitSourceRevision) ProtoMessage()               {}
+func (*GitSourceRevision) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{27} }
 
-func (m *ImageChangeTrigger) Reset()         { *m = ImageChangeTrigger{} }
-func (m *ImageChangeTrigger) String() string { return proto.CompactTextString(m) }
-func (*ImageChangeTrigger) ProtoMessage()    {}
+func (m *ImageChangeCause) Reset()                    { *m = ImageChangeCause{} }
+func (*ImageChangeCause) ProtoMessage()               {}
+func (*ImageChangeCause) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{28} }
 
-func (m *ImageSource) Reset()         { *m = ImageSource{} }
-func (m *ImageSource) String() string { return proto.CompactTextString(m) }
-func (*ImageSource) ProtoMessage()    {}
+func (m *ImageChangeTrigger) Reset()                    { *m = ImageChangeTrigger{} }
+func (*ImageChangeTrigger) ProtoMessage()               {}
+func (*ImageChangeTrigger) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{29} }
 
-func (m *ImageSourcePath) Reset()         { *m = ImageSourcePath{} }
-func (m *ImageSourcePath) String() string { return proto.CompactTextString(m) }
-func (*ImageSourcePath) ProtoMessage()    {}
+func (m *ImageLabel) Reset()                    { *m = ImageLabel{} }
+func (*ImageLabel) ProtoMessage()               {}
+func (*ImageLabel) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{30} }
 
-func (m *JenkinsPipelineBuildStrategy) Reset()         { *m = JenkinsPipelineBuildStrategy{} }
-func (m *JenkinsPipelineBuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*JenkinsPipelineBuildStrategy) ProtoMessage()    {}
+func (m *ImageSource) Reset()                    { *m = ImageSource{} }
+func (*ImageSource) ProtoMessage()               {}
+func (*ImageSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{31} }
 
-func (m *SecretBuildSource) Reset()         { *m = SecretBuildSource{} }
-func (m *SecretBuildSource) String() string { return proto.CompactTextString(m) }
-func (*SecretBuildSource) ProtoMessage()    {}
+func (m *ImageSourcePath) Reset()                    { *m = ImageSourcePath{} }
+func (*ImageSourcePath) ProtoMessage()               {}
+func (*ImageSourcePath) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{32} }
 
-func (m *SecretSpec) Reset()         { *m = SecretSpec{} }
-func (m *SecretSpec) String() string { return proto.CompactTextString(m) }
-func (*SecretSpec) ProtoMessage()    {}
+func (m *JenkinsPipelineBuildStrategy) Reset()      { *m = JenkinsPipelineBuildStrategy{} }
+func (*JenkinsPipelineBuildStrategy) ProtoMessage() {}
+func (*JenkinsPipelineBuildStrategy) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{33}
+}
 
-func (m *SourceBuildStrategy) Reset()         { *m = SourceBuildStrategy{} }
-func (m *SourceBuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*SourceBuildStrategy) ProtoMessage()    {}
+func (m *ProxyConfig) Reset()                    { *m = ProxyConfig{} }
+func (*ProxyConfig) ProtoMessage()               {}
+func (*ProxyConfig) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{34} }
 
-func (m *SourceControlUser) Reset()         { *m = SourceControlUser{} }
-func (m *SourceControlUser) String() string { return proto.CompactTextString(m) }
-func (*SourceControlUser) ProtoMessage()    {}
+func (m *SecretBuildSource) Reset()                    { *m = SecretBuildSource{} }
+func (*SecretBuildSource) ProtoMessage()               {}
+func (*SecretBuildSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{35} }
 
-func (m *SourceRevision) Reset()         { *m = SourceRevision{} }
-func (m *SourceRevision) String() string { return proto.CompactTextString(m) }
-func (*SourceRevision) ProtoMessage()    {}
+func (m *SecretSpec) Reset()                    { *m = SecretSpec{} }
+func (*SecretSpec) ProtoMessage()               {}
+func (*SecretSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{36} }
 
-func (m *WebHookTrigger) Reset()         { *m = WebHookTrigger{} }
-func (m *WebHookTrigger) String() string { return proto.CompactTextString(m) }
-func (*WebHookTrigger) ProtoMessage()    {}
+func (m *SourceBuildStrategy) Reset()                    { *m = SourceBuildStrategy{} }
+func (*SourceBuildStrategy) ProtoMessage()               {}
+func (*SourceBuildStrategy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{37} }
+
+func (m *SourceControlUser) Reset()                    { *m = SourceControlUser{} }
+func (*SourceControlUser) ProtoMessage()               {}
+func (*SourceControlUser) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{38} }
+
+func (m *SourceRevision) Reset()                    { *m = SourceRevision{} }
+func (*SourceRevision) ProtoMessage()               {}
+func (*SourceRevision) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{39} }
+
+func (m *WebHookTrigger) Reset()                    { *m = WebHookTrigger{} }
+func (*WebHookTrigger) ProtoMessage()               {}
+func (*WebHookTrigger) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{40} }
 
 func init() {
 	proto.RegisterType((*BinaryBuildRequestOptions)(nil), "github.com.openshift.origin.pkg.build.api.v1.BinaryBuildRequestOptions")
@@ -254,9 +275,11 @@ func init() {
 	proto.RegisterType((*GitSourceRevision)(nil), "github.com.openshift.origin.pkg.build.api.v1.GitSourceRevision")
 	proto.RegisterType((*ImageChangeCause)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageChangeCause")
 	proto.RegisterType((*ImageChangeTrigger)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageChangeTrigger")
+	proto.RegisterType((*ImageLabel)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageLabel")
 	proto.RegisterType((*ImageSource)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageSource")
 	proto.RegisterType((*ImageSourcePath)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageSourcePath")
 	proto.RegisterType((*JenkinsPipelineBuildStrategy)(nil), "github.com.openshift.origin.pkg.build.api.v1.JenkinsPipelineBuildStrategy")
+	proto.RegisterType((*ProxyConfig)(nil), "github.com.openshift.origin.pkg.build.api.v1.ProxyConfig")
 	proto.RegisterType((*SecretBuildSource)(nil), "github.com.openshift.origin.pkg.build.api.v1.SecretBuildSource")
 	proto.RegisterType((*SecretSpec)(nil), "github.com.openshift.origin.pkg.build.api.v1.SecretSpec")
 	proto.RegisterType((*SourceBuildStrategy)(nil), "github.com.openshift.origin.pkg.build.api.v1.SourceBuildStrategy")
@@ -699,6 +722,18 @@ func (m *BuildOutput) MarshalTo(data []byte) (int, error) {
 			return 0, err
 		}
 		i += n13
+	}
+	if len(m.ImageLabels) > 0 {
+		for _, msg := range m.ImageLabels {
+			data[i] = 0x1a
+			i++
+			i = encodeVarintGenerated(data, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(data[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
 	}
 	return i, nil
 }
@@ -1541,18 +1576,14 @@ func (m *GitBuildSource) MarshalTo(data []byte) (int, error) {
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.Ref)))
 	i += copy(data[i:], m.Ref)
-	if m.HTTPProxy != nil {
-		data[i] = 0x1a
-		i++
-		i = encodeVarintGenerated(data, i, uint64(len(*m.HTTPProxy)))
-		i += copy(data[i:], *m.HTTPProxy)
+	data[i] = 0x1a
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.ProxyConfig.Size()))
+	n48, err := m.ProxyConfig.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
 	}
-	if m.HTTPSProxy != nil {
-		data[i] = 0x22
-		i++
-		i = encodeVarintGenerated(data, i, uint64(len(*m.HTTPSProxy)))
-		i += copy(data[i:], *m.HTTPSProxy)
-	}
+	i += n48
 	return i, nil
 }
 
@@ -1575,11 +1606,11 @@ func (m *GitHubWebHookCause) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Revision.Size()))
-		n48, err := m.Revision.MarshalTo(data[i:])
+		n49, err := m.Revision.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n48
+		i += n49
 	}
 	data[i] = 0x12
 	i++
@@ -1606,19 +1637,19 @@ func (m *GitInfo) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.GitBuildSource.Size()))
-	n49, err := m.GitBuildSource.MarshalTo(data[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n49
-	data[i] = 0x12
-	i++
-	i = encodeVarintGenerated(data, i, uint64(m.GitSourceRevision.Size()))
-	n50, err := m.GitSourceRevision.MarshalTo(data[i:])
+	n50, err := m.GitBuildSource.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
 	i += n50
+	data[i] = 0x12
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.GitSourceRevision.Size()))
+	n51, err := m.GitSourceRevision.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n51
 	return i, nil
 }
 
@@ -1644,19 +1675,19 @@ func (m *GitSourceRevision) MarshalTo(data []byte) (int, error) {
 	data[i] = 0x12
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Author.Size()))
-	n51, err := m.Author.MarshalTo(data[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n51
-	data[i] = 0x1a
-	i++
-	i = encodeVarintGenerated(data, i, uint64(m.Committer.Size()))
-	n52, err := m.Committer.MarshalTo(data[i:])
+	n52, err := m.Author.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
 	i += n52
+	data[i] = 0x1a
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.Committer.Size()))
+	n53, err := m.Committer.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n53
 	data[i] = 0x22
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.Message)))
@@ -1687,11 +1718,11 @@ func (m *ImageChangeCause) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.FromRef.Size()))
-		n53, err := m.FromRef.MarshalTo(data[i:])
+		n54, err := m.FromRef.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n53
+		i += n54
 	}
 	return i, nil
 }
@@ -1719,12 +1750,38 @@ func (m *ImageChangeTrigger) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-		n54, err := m.From.MarshalTo(data[i:])
+		n55, err := m.From.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n54
+		i += n55
 	}
+	return i, nil
+}
+
+func (m *ImageLabel) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *ImageLabel) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	data[i] = 0xa
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Name)))
+	i += copy(data[i:], m.Name)
+	data[i] = 0x12
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Value)))
+	i += copy(data[i:], m.Value)
 	return i, nil
 }
 
@@ -1746,11 +1803,11 @@ func (m *ImageSource) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-	n55, err := m.From.MarshalTo(data[i:])
+	n56, err := m.From.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n55
+	i += n56
 	if len(m.Paths) > 0 {
 		for _, msg := range m.Paths {
 			data[i] = 0x12
@@ -1767,11 +1824,11 @@ func (m *ImageSource) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x1a
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.PullSecret.Size()))
-		n56, err := m.PullSecret.MarshalTo(data[i:])
+		n57, err := m.PullSecret.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n56
+		i += n57
 	}
 	return i, nil
 }
@@ -1828,6 +1885,42 @@ func (m *JenkinsPipelineBuildStrategy) MarshalTo(data []byte) (int, error) {
 	return i, nil
 }
 
+func (m *ProxyConfig) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *ProxyConfig) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.HTTPProxy != nil {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(len(*m.HTTPProxy)))
+		i += copy(data[i:], *m.HTTPProxy)
+	}
+	if m.HTTPSProxy != nil {
+		data[i] = 0x22
+		i++
+		i = encodeVarintGenerated(data, i, uint64(len(*m.HTTPSProxy)))
+		i += copy(data[i:], *m.HTTPSProxy)
+	}
+	if m.NoProxy != nil {
+		data[i] = 0x2a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(len(*m.NoProxy)))
+		i += copy(data[i:], *m.NoProxy)
+	}
+	return i, nil
+}
+
 func (m *SecretBuildSource) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
@@ -1846,11 +1939,11 @@ func (m *SecretBuildSource) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Secret.Size()))
-	n57, err := m.Secret.MarshalTo(data[i:])
+	n58, err := m.Secret.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n57
+	i += n58
 	data[i] = 0x12
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.DestinationDir)))
@@ -1876,11 +1969,11 @@ func (m *SecretSpec) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.SecretSource.Size()))
-	n58, err := m.SecretSource.MarshalTo(data[i:])
+	n59, err := m.SecretSource.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n58
+	i += n59
 	data[i] = 0x12
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.MountPath)))
@@ -1906,20 +1999,20 @@ func (m *SourceBuildStrategy) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-	n59, err := m.From.MarshalTo(data[i:])
+	n60, err := m.From.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n59
+	i += n60
 	if m.PullSecret != nil {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.PullSecret.Size()))
-		n60, err := m.PullSecret.MarshalTo(data[i:])
+		n61, err := m.PullSecret.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n60
+		i += n61
 	}
 	if len(m.Env) > 0 {
 		for _, msg := range m.Env {
@@ -1937,14 +2030,16 @@ func (m *SourceBuildStrategy) MarshalTo(data []byte) (int, error) {
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.Scripts)))
 	i += copy(data[i:], m.Scripts)
-	data[i] = 0x28
-	i++
-	if m.Incremental {
-		data[i] = 1
-	} else {
-		data[i] = 0
+	if m.Incremental != nil {
+		data[i] = 0x28
+		i++
+		if *m.Incremental {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
 	}
-	i++
 	data[i] = 0x30
 	i++
 	if m.ForcePull {
@@ -1953,6 +2048,28 @@ func (m *SourceBuildStrategy) MarshalTo(data []byte) (int, error) {
 		data[i] = 0
 	}
 	i++
+	if m.RuntimeImage != nil {
+		data[i] = 0x3a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.RuntimeImage.Size()))
+		n62, err := m.RuntimeImage.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n62
+	}
+	if len(m.RuntimeArtifacts) > 0 {
+		for _, msg := range m.RuntimeArtifacts {
+			data[i] = 0x42
+			i++
+			i = encodeVarintGenerated(data, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(data[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
 	return i, nil
 }
 
@@ -2005,11 +2122,11 @@ func (m *SourceRevision) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Git.Size()))
-		n61, err := m.Git.MarshalTo(data[i:])
+		n63, err := m.Git.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n61
+		i += n63
 	}
 	return i, nil
 }
@@ -2220,6 +2337,12 @@ func (m *BuildOutput) Size() (n int) {
 	if m.PushSecret != nil {
 		l = m.PushSecret.Size()
 		n += 1 + l + sovGenerated(uint64(l))
+	}
+	if len(m.ImageLabels) > 0 {
+		for _, e := range m.ImageLabels {
+			l = e.Size()
+			n += 1 + l + sovGenerated(uint64(l))
+		}
 	}
 	return n
 }
@@ -2541,14 +2664,8 @@ func (m *GitBuildSource) Size() (n int) {
 	n += 1 + l + sovGenerated(uint64(l))
 	l = len(m.Ref)
 	n += 1 + l + sovGenerated(uint64(l))
-	if m.HTTPProxy != nil {
-		l = len(*m.HTTPProxy)
-		n += 1 + l + sovGenerated(uint64(l))
-	}
-	if m.HTTPSProxy != nil {
-		l = len(*m.HTTPSProxy)
-		n += 1 + l + sovGenerated(uint64(l))
-	}
+	l = m.ProxyConfig.Size()
+	n += 1 + l + sovGenerated(uint64(l))
 	return n
 }
 
@@ -2612,6 +2729,16 @@ func (m *ImageChangeTrigger) Size() (n int) {
 	return n
 }
 
+func (m *ImageLabel) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Name)
+	n += 1 + l + sovGenerated(uint64(l))
+	l = len(m.Value)
+	n += 1 + l + sovGenerated(uint64(l))
+	return n
+}
+
 func (m *ImageSource) Size() (n int) {
 	var l int
 	_ = l
@@ -2647,6 +2774,24 @@ func (m *JenkinsPipelineBuildStrategy) Size() (n int) {
 	n += 1 + l + sovGenerated(uint64(l))
 	l = len(m.Jenkinsfile)
 	n += 1 + l + sovGenerated(uint64(l))
+	return n
+}
+
+func (m *ProxyConfig) Size() (n int) {
+	var l int
+	_ = l
+	if m.HTTPProxy != nil {
+		l = len(*m.HTTPProxy)
+		n += 1 + l + sovGenerated(uint64(l))
+	}
+	if m.HTTPSProxy != nil {
+		l = len(*m.HTTPSProxy)
+		n += 1 + l + sovGenerated(uint64(l))
+	}
+	if m.NoProxy != nil {
+		l = len(*m.NoProxy)
+		n += 1 + l + sovGenerated(uint64(l))
+	}
 	return n
 }
 
@@ -2687,8 +2832,20 @@ func (m *SourceBuildStrategy) Size() (n int) {
 	}
 	l = len(m.Scripts)
 	n += 1 + l + sovGenerated(uint64(l))
+	if m.Incremental != nil {
+		n += 2
+	}
 	n += 2
-	n += 2
+	if m.RuntimeImage != nil {
+		l = m.RuntimeImage.Size()
+		n += 1 + l + sovGenerated(uint64(l))
+	}
+	if len(m.RuntimeArtifacts) > 0 {
+		for _, e := range m.RuntimeArtifacts {
+			l = e.Size()
+			n += 1 + l + sovGenerated(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -2735,6 +2892,533 @@ func sovGenerated(x uint64) (n int) {
 }
 func sozGenerated(x uint64) (n int) {
 	return sovGenerated(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (this *BinaryBuildRequestOptions) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BinaryBuildRequestOptions{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`AsFile:` + fmt.Sprintf("%v", this.AsFile) + `,`,
+		`Commit:` + fmt.Sprintf("%v", this.Commit) + `,`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`AuthorName:` + fmt.Sprintf("%v", this.AuthorName) + `,`,
+		`AuthorEmail:` + fmt.Sprintf("%v", this.AuthorEmail) + `,`,
+		`CommitterName:` + fmt.Sprintf("%v", this.CommitterName) + `,`,
+		`CommitterEmail:` + fmt.Sprintf("%v", this.CommitterEmail) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BinaryBuildSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BinaryBuildSource{`,
+		`AsFile:` + fmt.Sprintf("%v", this.AsFile) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Build) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Build{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`Spec:` + strings.Replace(strings.Replace(this.Spec.String(), "BuildSpec", "BuildSpec", 1), `&`, ``, 1) + `,`,
+		`Status:` + strings.Replace(strings.Replace(this.Status.String(), "BuildStatus", "BuildStatus", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildConfig) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildConfig{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`Spec:` + strings.Replace(strings.Replace(this.Spec.String(), "BuildConfigSpec", "BuildConfigSpec", 1), `&`, ``, 1) + `,`,
+		`Status:` + strings.Replace(strings.Replace(this.Status.String(), "BuildConfigStatus", "BuildConfigStatus", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildConfigList) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildConfigList{`,
+		`ListMeta:` + strings.Replace(strings.Replace(this.ListMeta.String(), "ListMeta", "k8s_io_kubernetes_pkg_api_unversioned.ListMeta", 1), `&`, ``, 1) + `,`,
+		`Items:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Items), "BuildConfig", "BuildConfig", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildConfigSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildConfigSpec{`,
+		`Triggers:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Triggers), "BuildTriggerPolicy", "BuildTriggerPolicy", 1), `&`, ``, 1) + `,`,
+		`RunPolicy:` + fmt.Sprintf("%v", this.RunPolicy) + `,`,
+		`CommonSpec:` + strings.Replace(strings.Replace(this.CommonSpec.String(), "CommonSpec", "CommonSpec", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildConfigStatus) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildConfigStatus{`,
+		`LastVersion:` + fmt.Sprintf("%v", this.LastVersion) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildList) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildList{`,
+		`ListMeta:` + strings.Replace(strings.Replace(this.ListMeta.String(), "ListMeta", "k8s_io_kubernetes_pkg_api_unversioned.ListMeta", 1), `&`, ``, 1) + `,`,
+		`Items:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Items), "Build", "Build", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildLog) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildLog{`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildLogOptions) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildLogOptions{`,
+		`Container:` + fmt.Sprintf("%v", this.Container) + `,`,
+		`Follow:` + fmt.Sprintf("%v", this.Follow) + `,`,
+		`Previous:` + fmt.Sprintf("%v", this.Previous) + `,`,
+		`SinceSeconds:` + valueToStringGenerated(this.SinceSeconds) + `,`,
+		`SinceTime:` + strings.Replace(fmt.Sprintf("%v", this.SinceTime), "Time", "k8s_io_kubernetes_pkg_api_unversioned.Time", 1) + `,`,
+		`Timestamps:` + fmt.Sprintf("%v", this.Timestamps) + `,`,
+		`TailLines:` + valueToStringGenerated(this.TailLines) + `,`,
+		`LimitBytes:` + valueToStringGenerated(this.LimitBytes) + `,`,
+		`NoWait:` + fmt.Sprintf("%v", this.NoWait) + `,`,
+		`Version:` + valueToStringGenerated(this.Version) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildOutput) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildOutput{`,
+		`To:` + strings.Replace(fmt.Sprintf("%v", this.To), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`PushSecret:` + strings.Replace(fmt.Sprintf("%v", this.PushSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`ImageLabels:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ImageLabels), "ImageLabel", "ImageLabel", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildPostCommitSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildPostCommitSpec{`,
+		`Command:` + fmt.Sprintf("%v", this.Command) + `,`,
+		`Args:` + fmt.Sprintf("%v", this.Args) + `,`,
+		`Script:` + fmt.Sprintf("%v", this.Script) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildRequest{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`Revision:` + strings.Replace(fmt.Sprintf("%v", this.Revision), "SourceRevision", "SourceRevision", 1) + `,`,
+		`TriggeredByImage:` + strings.Replace(fmt.Sprintf("%v", this.TriggeredByImage), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`From:` + strings.Replace(fmt.Sprintf("%v", this.From), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`Binary:` + strings.Replace(fmt.Sprintf("%v", this.Binary), "BinaryBuildSource", "BinaryBuildSource", 1) + `,`,
+		`LastVersion:` + valueToStringGenerated(this.LastVersion) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`TriggeredBy:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.TriggeredBy), "BuildTriggerCause", "BuildTriggerCause", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildSource{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Binary:` + strings.Replace(fmt.Sprintf("%v", this.Binary), "BinaryBuildSource", "BinaryBuildSource", 1) + `,`,
+		`Dockerfile:` + valueToStringGenerated(this.Dockerfile) + `,`,
+		`Git:` + strings.Replace(fmt.Sprintf("%v", this.Git), "GitBuildSource", "GitBuildSource", 1) + `,`,
+		`Images:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Images), "ImageSource", "ImageSource", 1), `&`, ``, 1) + `,`,
+		`ContextDir:` + fmt.Sprintf("%v", this.ContextDir) + `,`,
+		`SourceSecret:` + strings.Replace(fmt.Sprintf("%v", this.SourceSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`Secrets:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Secrets), "SecretBuildSource", "SecretBuildSource", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildSpec{`,
+		`CommonSpec:` + strings.Replace(strings.Replace(this.CommonSpec.String(), "CommonSpec", "CommonSpec", 1), `&`, ``, 1) + `,`,
+		`TriggeredBy:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.TriggeredBy), "BuildTriggerCause", "BuildTriggerCause", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildStatus) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildStatus{`,
+		`Phase:` + fmt.Sprintf("%v", this.Phase) + `,`,
+		`Cancelled:` + fmt.Sprintf("%v", this.Cancelled) + `,`,
+		`Reason:` + fmt.Sprintf("%v", this.Reason) + `,`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`StartTimestamp:` + strings.Replace(fmt.Sprintf("%v", this.StartTimestamp), "Time", "k8s_io_kubernetes_pkg_api_unversioned.Time", 1) + `,`,
+		`CompletionTimestamp:` + strings.Replace(fmt.Sprintf("%v", this.CompletionTimestamp), "Time", "k8s_io_kubernetes_pkg_api_unversioned.Time", 1) + `,`,
+		`Duration:` + fmt.Sprintf("%v", this.Duration) + `,`,
+		`OutputDockerImageReference:` + fmt.Sprintf("%v", this.OutputDockerImageReference) + `,`,
+		`Config:` + strings.Replace(fmt.Sprintf("%v", this.Config), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildStrategy{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`DockerStrategy:` + strings.Replace(fmt.Sprintf("%v", this.DockerStrategy), "DockerBuildStrategy", "DockerBuildStrategy", 1) + `,`,
+		`SourceStrategy:` + strings.Replace(fmt.Sprintf("%v", this.SourceStrategy), "SourceBuildStrategy", "SourceBuildStrategy", 1) + `,`,
+		`CustomStrategy:` + strings.Replace(fmt.Sprintf("%v", this.CustomStrategy), "CustomBuildStrategy", "CustomBuildStrategy", 1) + `,`,
+		`JenkinsPipelineStrategy:` + strings.Replace(fmt.Sprintf("%v", this.JenkinsPipelineStrategy), "JenkinsPipelineBuildStrategy", "JenkinsPipelineBuildStrategy", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildTriggerCause) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildTriggerCause{`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`GenericWebHook:` + strings.Replace(fmt.Sprintf("%v", this.GenericWebHook), "GenericWebHookCause", "GenericWebHookCause", 1) + `,`,
+		`GitHubWebHook:` + strings.Replace(fmt.Sprintf("%v", this.GitHubWebHook), "GitHubWebHookCause", "GitHubWebHookCause", 1) + `,`,
+		`ImageChangeBuild:` + strings.Replace(fmt.Sprintf("%v", this.ImageChangeBuild), "ImageChangeCause", "ImageChangeCause", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildTriggerPolicy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildTriggerPolicy{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`GitHubWebHook:` + strings.Replace(fmt.Sprintf("%v", this.GitHubWebHook), "WebHookTrigger", "WebHookTrigger", 1) + `,`,
+		`GenericWebHook:` + strings.Replace(fmt.Sprintf("%v", this.GenericWebHook), "WebHookTrigger", "WebHookTrigger", 1) + `,`,
+		`ImageChange:` + strings.Replace(fmt.Sprintf("%v", this.ImageChange), "ImageChangeTrigger", "ImageChangeTrigger", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CommonSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CommonSpec{`,
+		`ServiceAccount:` + fmt.Sprintf("%v", this.ServiceAccount) + `,`,
+		`Source:` + strings.Replace(strings.Replace(this.Source.String(), "BuildSource", "BuildSource", 1), `&`, ``, 1) + `,`,
+		`Revision:` + strings.Replace(fmt.Sprintf("%v", this.Revision), "SourceRevision", "SourceRevision", 1) + `,`,
+		`Strategy:` + strings.Replace(strings.Replace(this.Strategy.String(), "BuildStrategy", "BuildStrategy", 1), `&`, ``, 1) + `,`,
+		`Output:` + strings.Replace(strings.Replace(this.Output.String(), "BuildOutput", "BuildOutput", 1), `&`, ``, 1) + `,`,
+		`Resources:` + strings.Replace(strings.Replace(this.Resources.String(), "ResourceRequirements", "k8s_io_kubernetes_pkg_api_v1.ResourceRequirements", 1), `&`, ``, 1) + `,`,
+		`PostCommit:` + strings.Replace(strings.Replace(this.PostCommit.String(), "BuildPostCommitSpec", "BuildPostCommitSpec", 1), `&`, ``, 1) + `,`,
+		`CompletionDeadlineSeconds:` + valueToStringGenerated(this.CompletionDeadlineSeconds) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CustomBuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CustomBuildStrategy{`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`PullSecret:` + strings.Replace(fmt.Sprintf("%v", this.PullSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`ExposeDockerSocket:` + fmt.Sprintf("%v", this.ExposeDockerSocket) + `,`,
+		`ForcePull:` + fmt.Sprintf("%v", this.ForcePull) + `,`,
+		`Secrets:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Secrets), "SecretSpec", "SecretSpec", 1), `&`, ``, 1) + `,`,
+		`BuildAPIVersion:` + fmt.Sprintf("%v", this.BuildAPIVersion) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DockerBuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DockerBuildStrategy{`,
+		`From:` + strings.Replace(fmt.Sprintf("%v", this.From), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`PullSecret:` + strings.Replace(fmt.Sprintf("%v", this.PullSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`NoCache:` + fmt.Sprintf("%v", this.NoCache) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`ForcePull:` + fmt.Sprintf("%v", this.ForcePull) + `,`,
+		`DockerfilePath:` + fmt.Sprintf("%v", this.DockerfilePath) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GenericWebHookCause) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GenericWebHookCause{`,
+		`Revision:` + strings.Replace(fmt.Sprintf("%v", this.Revision), "SourceRevision", "SourceRevision", 1) + `,`,
+		`Secret:` + fmt.Sprintf("%v", this.Secret) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GenericWebHookEvent) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GenericWebHookEvent{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Git:` + strings.Replace(fmt.Sprintf("%v", this.Git), "GitInfo", "GitInfo", 1) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GitBuildSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GitBuildSource{`,
+		`URI:` + fmt.Sprintf("%v", this.URI) + `,`,
+		`Ref:` + fmt.Sprintf("%v", this.Ref) + `,`,
+		`ProxyConfig:` + strings.Replace(strings.Replace(this.ProxyConfig.String(), "ProxyConfig", "ProxyConfig", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GitHubWebHookCause) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GitHubWebHookCause{`,
+		`Revision:` + strings.Replace(fmt.Sprintf("%v", this.Revision), "SourceRevision", "SourceRevision", 1) + `,`,
+		`Secret:` + fmt.Sprintf("%v", this.Secret) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GitInfo) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GitInfo{`,
+		`GitBuildSource:` + strings.Replace(strings.Replace(this.GitBuildSource.String(), "GitBuildSource", "GitBuildSource", 1), `&`, ``, 1) + `,`,
+		`GitSourceRevision:` + strings.Replace(strings.Replace(this.GitSourceRevision.String(), "GitSourceRevision", "GitSourceRevision", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GitSourceRevision) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GitSourceRevision{`,
+		`Commit:` + fmt.Sprintf("%v", this.Commit) + `,`,
+		`Author:` + strings.Replace(strings.Replace(this.Author.String(), "SourceControlUser", "SourceControlUser", 1), `&`, ``, 1) + `,`,
+		`Committer:` + strings.Replace(strings.Replace(this.Committer.String(), "SourceControlUser", "SourceControlUser", 1), `&`, ``, 1) + `,`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageChangeCause) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageChangeCause{`,
+		`ImageID:` + fmt.Sprintf("%v", this.ImageID) + `,`,
+		`FromRef:` + strings.Replace(fmt.Sprintf("%v", this.FromRef), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageChangeTrigger) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageChangeTrigger{`,
+		`LastTriggeredImageID:` + fmt.Sprintf("%v", this.LastTriggeredImageID) + `,`,
+		`From:` + strings.Replace(fmt.Sprintf("%v", this.From), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageLabel) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageLabel{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageSource{`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`Paths:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Paths), "ImageSourcePath", "ImageSourcePath", 1), `&`, ``, 1) + `,`,
+		`PullSecret:` + strings.Replace(fmt.Sprintf("%v", this.PullSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageSourcePath) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageSourcePath{`,
+		`SourcePath:` + fmt.Sprintf("%v", this.SourcePath) + `,`,
+		`DestinationDir:` + fmt.Sprintf("%v", this.DestinationDir) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *JenkinsPipelineBuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&JenkinsPipelineBuildStrategy{`,
+		`JenkinsfilePath:` + fmt.Sprintf("%v", this.JenkinsfilePath) + `,`,
+		`Jenkinsfile:` + fmt.Sprintf("%v", this.Jenkinsfile) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ProxyConfig) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ProxyConfig{`,
+		`HTTPProxy:` + valueToStringGenerated(this.HTTPProxy) + `,`,
+		`HTTPSProxy:` + valueToStringGenerated(this.HTTPSProxy) + `,`,
+		`NoProxy:` + valueToStringGenerated(this.NoProxy) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SecretBuildSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SecretBuildSource{`,
+		`Secret:` + strings.Replace(strings.Replace(this.Secret.String(), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1), `&`, ``, 1) + `,`,
+		`DestinationDir:` + fmt.Sprintf("%v", this.DestinationDir) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SecretSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SecretSpec{`,
+		`SecretSource:` + strings.Replace(strings.Replace(this.SecretSource.String(), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1), `&`, ``, 1) + `,`,
+		`MountPath:` + fmt.Sprintf("%v", this.MountPath) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SourceBuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SourceBuildStrategy{`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`PullSecret:` + strings.Replace(fmt.Sprintf("%v", this.PullSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`Scripts:` + fmt.Sprintf("%v", this.Scripts) + `,`,
+		`Incremental:` + valueToStringGenerated(this.Incremental) + `,`,
+		`ForcePull:` + fmt.Sprintf("%v", this.ForcePull) + `,`,
+		`RuntimeImage:` + strings.Replace(fmt.Sprintf("%v", this.RuntimeImage), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`RuntimeArtifacts:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.RuntimeArtifacts), "ImageSourcePath", "ImageSourcePath", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SourceControlUser) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SourceControlUser{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Email:` + fmt.Sprintf("%v", this.Email) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SourceRevision) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SourceRevision{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Git:` + strings.Replace(fmt.Sprintf("%v", this.Git), "GitSourceRevision", "GitSourceRevision", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *WebHookTrigger) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&WebHookTrigger{`,
+		`Secret:` + fmt.Sprintf("%v", this.Secret) + `,`,
+		`AllowEnv:` + fmt.Sprintf("%v", this.AllowEnv) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func valueToStringGenerated(v interface{}) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("*%v", pv)
 }
 func (m *BinaryBuildRequestOptions) Unmarshal(data []byte) error {
 	l := len(data)
@@ -4223,6 +4907,37 @@ func (m *BuildOutput) Unmarshal(data []byte) error {
 				m.PushSecret = &k8s_io_kubernetes_pkg_api_v1.LocalObjectReference{}
 			}
 			if err := m.PushSecret.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ImageLabels", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ImageLabels = append(m.ImageLabels, ImageLabel{})
+			if err := m.ImageLabels[len(m.ImageLabels)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -7045,9 +7760,9 @@ func (m *GitBuildSource) Unmarshal(data []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HTTPProxy", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ProxyConfig", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowGenerated
@@ -7057,51 +7772,21 @@ func (m *GitBuildSource) Unmarshal(data []byte) error {
 				}
 				b := data[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return ErrInvalidLengthGenerated
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			s := string(data[iNdEx:postIndex])
-			m.HTTPProxy = &s
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HTTPSProxy", wireType)
+			if err := m.ProxyConfig.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
 			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowGenerated
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthGenerated
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(data[iNdEx:postIndex])
-			m.HTTPSProxy = &s
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -7738,6 +8423,114 @@ func (m *ImageChangeTrigger) Unmarshal(data []byte) error {
 	}
 	return nil
 }
+func (m *ImageLabel) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ImageLabel: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ImageLabel: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Value = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *ImageSource) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
@@ -8076,6 +8869,146 @@ func (m *JenkinsPipelineBuildStrategy) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Jenkinsfile = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ProxyConfig) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ProxyConfig: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ProxyConfig: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HTTPProxy", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(data[iNdEx:postIndex])
+			m.HTTPProxy = &s
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HTTPSProxy", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(data[iNdEx:postIndex])
+			m.HTTPSProxy = &s
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NoProxy", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(data[iNdEx:postIndex])
+			m.NoProxy = &s
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -8487,7 +9420,8 @@ func (m *SourceBuildStrategy) Unmarshal(data []byte) error {
 					break
 				}
 			}
-			m.Incremental = bool(v != 0)
+			b := bool(v != 0)
+			m.Incremental = &b
 		case 6:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ForcePull", wireType)
@@ -8508,6 +9442,70 @@ func (m *SourceBuildStrategy) Unmarshal(data []byte) error {
 				}
 			}
 			m.ForcePull = bool(v != 0)
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RuntimeImage", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.RuntimeImage == nil {
+				m.RuntimeImage = &k8s_io_kubernetes_pkg_api_v1.ObjectReference{}
+			}
+			if err := m.RuntimeImage.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RuntimeArtifacts", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RuntimeArtifacts = append(m.RuntimeArtifacts, ImageSourcePath{})
+			if err := m.RuntimeArtifacts[len(m.RuntimeArtifacts)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGenerated(data[iNdEx:])
@@ -8952,3 +9950,204 @@ var (
 	ErrInvalidLengthGenerated = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowGenerated   = fmt.Errorf("proto: integer overflow")
 )
+
+var fileDescriptorGenerated = []byte{
+	// 3141 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xe4, 0x1a, 0x4b, 0x6c, 0x24, 0x47,
+	0x35, 0x3d, 0x33, 0x1e, 0xcf, 0xd4, 0x78, 0x6d, 0x6f, 0x79, 0x93, 0xf5, 0x3a, 0xc9, 0x26, 0xe9,
+	0x04, 0x14, 0x94, 0x64, 0x46, 0x76, 0x3e, 0x24, 0xca, 0x87, 0x78, 0xc6, 0xbb, 0x89, 0x8d, 0xb3,
+	0x6b, 0x9e, 0x9d, 0x0f, 0x8b, 0x00, 0xb5, 0xc7, 0x35, 0xe3, 0x8e, 0x67, 0xba, 0x87, 0xee, 0x1e,
+	0x27, 0x96, 0x40, 0x8a, 0x40, 0x48, 0xe1, 0xc6, 0xef, 0xc0, 0x05, 0x50, 0x24, 0x3e, 0x42, 0x39,
+	0x20, 0x3e, 0x07, 0x24, 0x2e, 0x20, 0x71, 0xc8, 0x31, 0x47, 0x4e, 0x11, 0x49, 0x0e, 0x9c, 0xb9,
+	0xe6, 0x44, 0x7d, 0x5e, 0x75, 0x57, 0xf7, 0x8c, 0x9d, 0x9d, 0xf6, 0x3a, 0x42, 0xe2, 0x30, 0x96,
+	0xfb, 0xbd, 0x57, 0xef, 0x55, 0xbd, 0x7a, 0xf5, 0x7e, 0x55, 0xe4, 0x99, 0xae, 0x1b, 0xed, 0x0f,
+	0x77, 0xeb, 0x6d, 0xbf, 0xdf, 0xf0, 0x07, 0xcc, 0x0b, 0xf7, 0xdd, 0x4e, 0xd4, 0xf0, 0x03, 0xb7,
+	0xeb, 0x7a, 0x8d, 0xc1, 0x41, 0xb7, 0xb1, 0x3b, 0x74, 0x7b, 0x7b, 0x0d, 0x67, 0xe0, 0x36, 0x0e,
+	0x97, 0x1b, 0x5d, 0xe6, 0xb1, 0xc0, 0x89, 0xd8, 0x5e, 0x7d, 0x10, 0xf8, 0x91, 0x4f, 0x1f, 0x4e,
+	0x46, 0xd7, 0xe3, 0xd1, 0x75, 0x35, 0xba, 0xce, 0x47, 0xd7, 0xe5, 0xe8, 0x3a, 0x1f, 0x5d, 0x3f,
+	0x5c, 0x5e, 0x7a, 0xc4, 0x90, 0xd5, 0xf5, 0xbb, 0x7e, 0x43, 0x32, 0xd9, 0x1d, 0x76, 0xe4, 0x97,
+	0xfc, 0x90, 0xff, 0x29, 0xe6, 0x4b, 0x8f, 0x1f, 0x3c, 0x19, 0xd6, 0x5d, 0xbf, 0x71, 0x30, 0xdc,
+	0x65, 0x81, 0xc7, 0x22, 0x16, 0xca, 0x09, 0x89, 0xa9, 0x0c, 0xbd, 0x43, 0x16, 0x84, 0xae, 0xef,
+	0xb1, 0xbd, 0xec, 0x9c, 0x96, 0x1e, 0x3e, 0x7e, 0xd8, 0xe8, 0x0a, 0x96, 0x1e, 0x19, 0x4f, 0x1d,
+	0x0c, 0xbd, 0xc8, 0xed, 0xb3, 0x11, 0xf2, 0xe5, 0xf1, 0xe4, 0xc3, 0xc8, 0xed, 0x35, 0x5c, 0x2f,
+	0x0a, 0xa3, 0x20, 0x3b, 0xc4, 0xfe, 0x4b, 0x89, 0x5c, 0x6a, 0xba, 0x9e, 0x13, 0x1c, 0x35, 0x85,
+	0x32, 0x80, 0x7d, 0x6b, 0xc8, 0xc2, 0xe8, 0xfa, 0x20, 0xe2, 0xd3, 0x0f, 0xe9, 0x6b, 0xa4, 0xd2,
+	0x67, 0x91, 0xb3, 0xe7, 0x44, 0xce, 0xa2, 0x75, 0xaf, 0xf5, 0x60, 0x6d, 0xe5, 0xc1, 0xba, 0x92,
+	0x51, 0x4f, 0x64, 0x48, 0x55, 0x2a, 0x25, 0xd6, 0xaf, 0xef, 0xbe, 0xce, 0xda, 0xd1, 0x4b, 0x7c,
+	0x4c, 0x93, 0xbe, 0xf7, 0xc1, 0x3d, 0xb7, 0x7d, 0xf4, 0xc1, 0x3d, 0x24, 0x81, 0x41, 0xcc, 0x8d,
+	0x7e, 0x9e, 0x94, 0x9d, 0xf0, 0xaa, 0xdb, 0x63, 0x8b, 0x05, 0xce, 0xb7, 0xda, 0x9c, 0x45, 0xea,
+	0xf2, 0xaa, 0x84, 0x02, 0x62, 0xe9, 0x13, 0x64, 0x36, 0x60, 0x87, 0xae, 0xd0, 0x66, 0xcb, 0xef,
+	0xf7, 0xdd, 0x68, 0xb1, 0x98, 0xa6, 0x57, 0x50, 0xc8, 0x50, 0xd1, 0xa7, 0xc8, 0x9c, 0x86, 0xbc,
+	0xc4, 0xc2, 0xd0, 0xe9, 0xb2, 0xc5, 0x92, 0x1c, 0x38, 0x87, 0x03, 0xa7, 0x11, 0x0c, 0x59, 0x3a,
+	0xda, 0x24, 0x54, 0x83, 0x56, 0x87, 0xd1, 0xbe, 0x1f, 0x5c, 0x73, 0xfa, 0x6c, 0x71, 0x4a, 0x8e,
+	0x8e, 0x17, 0x95, 0x60, 0x60, 0x0c, 0x35, 0xbd, 0x42, 0x16, 0xd2, 0xd0, 0x2b, 0x7d, 0xc7, 0xed,
+	0x2d, 0x96, 0x25, 0x93, 0x05, 0x64, 0x52, 0x33, 0x50, 0x30, 0x8e, 0x9e, 0x7e, 0x99, 0xdc, 0x9e,
+	0x5e, 0x57, 0xc4, 0xd4, 0x6c, 0xa6, 0x25, 0xa3, 0xdb, 0x91, 0xd1, 0xb9, 0x14, 0x12, 0xc6, 0x8f,
+	0xa1, 0xd7, 0xc8, 0x1d, 0x23, 0x08, 0x35, 0xad, 0x8a, 0xe4, 0x76, 0x07, 0x72, 0x9b, 0x4d, 0x63,
+	0xe1, 0x98, 0x51, 0xf6, 0xd3, 0xe4, 0xbc, 0x61, 0x39, 0xdb, 0xfe, 0x30, 0x68, 0x33, 0x63, 0x5f,
+	0xad, 0x93, 0xf6, 0xd5, 0xfe, 0x65, 0x81, 0x4c, 0xc9, 0x71, 0x67, 0x68, 0x63, 0x5f, 0x25, 0xa5,
+	0x70, 0xc0, 0xda, 0xd2, 0xc2, 0x6a, 0x2b, 0x5f, 0xac, 0x4f, 0xe2, 0x0e, 0xea, 0x6a, 0x51, 0x7c,
+	0x78, 0x73, 0x06, 0x85, 0x94, 0xc4, 0x17, 0x48, 0x96, 0xd4, 0x21, 0xe5, 0x30, 0x72, 0xa2, 0x61,
+	0x28, 0xcd, 0xb1, 0xb6, 0xf2, 0x54, 0x1e, 0xe6, 0x92, 0x41, 0xa2, 0x21, 0xf5, 0x0d, 0xc8, 0xd8,
+	0xfe, 0x43, 0x81, 0xd4, 0x24, 0x5d, 0xcb, 0xf7, 0x3a, 0x6e, 0xf7, 0x0c, 0xf5, 0xf4, 0xcd, 0x94,
+	0x9e, 0x9e, 0xcd, 0xb1, 0x14, 0x35, 0xc5, 0x63, 0xb5, 0xd5, 0xcd, 0x68, 0xeb, 0x4b, 0xf9, 0x45,
+	0x9c, 0xac, 0xb3, 0xf7, 0x2d, 0x32, 0x67, 0x50, 0x6f, 0xba, 0x61, 0x44, 0xbf, 0x3e, 0xa2, 0xb7,
+	0xc6, 0x09, 0x7a, 0x33, 0x7c, 0x77, 0x5d, 0x0c, 0x97, 0xea, 0x9b, 0x47, 0x71, 0x15, 0x0d, 0x31,
+	0x94, 0xf7, 0x0d, 0x32, 0xe5, 0x46, 0xac, 0x1f, 0x72, 0xed, 0x15, 0x73, 0x1a, 0x82, 0x9a, 0x6c,
+	0xf3, 0x1c, 0x4a, 0x99, 0x5a, 0x17, 0xfc, 0x40, 0xb1, 0xb5, 0xff, 0x58, 0x48, 0x2d, 0x49, 0x68,
+	0x95, 0x7a, 0xa4, 0x12, 0x71, 0x86, 0x5d, 0x3e, 0x53, 0xbe, 0x24, 0x21, 0xf6, 0xf9, 0x1c, 0x62,
+	0x77, 0x14, 0x8b, 0x2d, 0xbf, 0xe7, 0xb6, 0x8f, 0x92, 0x35, 0x22, 0x38, 0x84, 0x58, 0x06, 0x5d,
+	0x25, 0x55, 0x1e, 0x72, 0x14, 0x21, 0xfa, 0xeb, 0xfb, 0x91, 0xbc, 0x0a, 0x1a, 0xf1, 0x09, 0xf7,
+	0x1c, 0x2a, 0x86, 0x68, 0x08, 0x24, 0xa3, 0x68, 0x8f, 0x10, 0x3e, 0xb5, 0xbe, 0xef, 0x89, 0x05,
+	0xa0, 0x19, 0x3c, 0x39, 0xd9, 0xa4, 0x5b, 0xf1, 0xf8, 0xc4, 0x9e, 0x13, 0x18, 0x18, 0xfc, 0xed,
+	0x0d, 0xee, 0x9a, 0xb2, 0x46, 0x43, 0x1f, 0x27, 0xb5, 0x9e, 0x13, 0x46, 0xaf, 0xa8, 0xfd, 0x95,
+	0xb6, 0x50, 0x4c, 0x7c, 0xf1, 0x66, 0x82, 0x02, 0x93, 0xce, 0xfe, 0x87, 0x45, 0xaa, 0x92, 0xd9,
+	0x67, 0x61, 0x4d, 0xaf, 0xa5, 0xad, 0xe9, 0xd1, 0x1c, 0xdb, 0x7a, 0x8c, 0x1d, 0x11, 0x52, 0x51,
+	0xab, 0xf0, 0xbb, 0xf6, 0xdb, 0x25, 0xb4, 0x29, 0xfe, 0xa1, 0x43, 0x7d, 0x83, 0x54, 0xdb, 0xbe,
+	0x17, 0x39, 0x2e, 0xcf, 0x0f, 0xd0, 0x77, 0x9f, 0xd7, 0x7b, 0xdc, 0xd2, 0x08, 0x48, 0x68, 0x84,
+	0xa7, 0xef, 0xf8, 0xbd, 0x9e, 0xff, 0x86, 0xb4, 0x88, 0x4a, 0x72, 0x26, 0xaf, 0x4a, 0x28, 0x20,
+	0x96, 0x3e, 0x4c, 0x2a, 0x03, 0x11, 0x41, 0x7c, 0x3c, 0xfe, 0x95, 0x44, 0x01, 0x5b, 0x08, 0x87,
+	0x98, 0x82, 0x3e, 0x46, 0x66, 0x42, 0xd7, 0x6b, 0xb3, 0x6d, 0xc6, 0x25, 0xed, 0x85, 0x32, 0x68,
+	0x17, 0x9b, 0xf3, 0x9c, 0x7a, 0x66, 0xdb, 0x80, 0x43, 0x8a, 0x8a, 0xab, 0xad, 0x2a, 0xbf, 0x77,
+	0x5c, 0x8c, 0xd4, 0xb5, 0x95, 0x87, 0x6e, 0x72, 0x5b, 0xc4, 0x90, 0xe6, 0x39, 0xb1, 0xca, 0x6d,
+	0xcd, 0x01, 0x12, 0x66, 0x74, 0x85, 0x10, 0x91, 0x6a, 0x71, 0xff, 0xd2, 0x1f, 0x84, 0x32, 0x7e,
+	0x57, 0x12, 0xeb, 0xdb, 0x89, 0x31, 0x60, 0x50, 0xd1, 0x87, 0x48, 0x95, 0xeb, 0xa8, 0xb7, 0xc9,
+	0xd5, 0x14, 0xca, 0x48, 0x5d, 0x54, 0x02, 0x76, 0x34, 0x10, 0x12, 0x3c, 0xad, 0x13, 0xd2, 0x73,
+	0x79, 0x58, 0x6d, 0x1e, 0xf1, 0x19, 0xca, 0x48, 0x5c, 0x6c, 0xce, 0x0a, 0xe6, 0x9b, 0x31, 0x14,
+	0x0c, 0x0a, 0xa1, 0x76, 0xcf, 0x7f, 0xc3, 0xe1, 0x89, 0x50, 0x35, 0xad, 0xf6, 0x6b, 0xfe, 0xab,
+	0x1c, 0x0a, 0x88, 0xa5, 0x9f, 0x23, 0xd3, 0xb8, 0xc8, 0x45, 0x22, 0x99, 0xd6, 0x44, 0xd2, 0xa3,
+	0x2d, 0x5c, 0xe3, 0xec, 0xdf, 0xe9, 0x28, 0x73, 0x7d, 0x18, 0x0d, 0x86, 0x11, 0x4f, 0x5c, 0x0a,
+	0x91, 0x8f, 0x96, 0xfd, 0xc8, 0xcd, 0xc4, 0x17, 0x60, 0x1d, 0x16, 0x30, 0xae, 0xae, 0x66, 0x99,
+	0x0b, 0x28, 0xec, 0xf8, 0xc0, 0x19, 0xd0, 0x5d, 0x42, 0x06, 0xc3, 0x70, 0x9f, 0xef, 0x4f, 0xc0,
+	0x22, 0x0c, 0x2c, 0x2b, 0x27, 0xb3, 0xdb, 0xf4, 0xdb, 0x4e, 0x2f, 0xcb, 0x53, 0x6a, 0x62, 0x2b,
+	0xe6, 0x04, 0x06, 0x57, 0xea, 0x93, 0x9a, 0xdb, 0xe7, 0x09, 0xdb, 0xa6, 0xb3, 0xcb, 0x7a, 0xc2,
+	0xb6, 0x8a, 0x93, 0xfb, 0x94, 0xf5, 0x98, 0x41, 0xe2, 0x09, 0x12, 0x58, 0x08, 0xa6, 0x04, 0xfb,
+	0xbb, 0x16, 0x59, 0x90, 0xba, 0xda, 0xf2, 0xc3, 0x48, 0x25, 0x43, 0xd2, 0x1d, 0x73, 0x55, 0x0b,
+	0xdf, 0xe3, 0x78, 0x7b, 0xd2, 0x1b, 0x57, 0x95, 0xaa, 0x5b, 0x0a, 0x04, 0x1a, 0x47, 0xef, 0x22,
+	0x25, 0x27, 0xe8, 0xaa, 0xa3, 0x5d, 0x6d, 0x56, 0x44, 0x8c, 0x5c, 0xe5, 0xdf, 0x20, 0xa1, 0x62,
+	0x5f, 0xc3, 0x76, 0xe0, 0x0e, 0x46, 0x12, 0xdc, 0x6d, 0x09, 0x05, 0xc4, 0xda, 0x1f, 0x4f, 0x91,
+	0x19, 0x33, 0x55, 0x3f, 0xc3, 0xbc, 0xa0, 0x43, 0x2a, 0x3a, 0xf5, 0xc3, 0x2d, 0x7c, 0x66, 0x32,
+	0xed, 0xaa, 0x9c, 0x10, 0x90, 0x47, 0x73, 0x46, 0x9c, 0x79, 0xfd, 0x05, 0x31, 0x6f, 0xbe, 0x91,
+	0xf3, 0x18, 0x6a, 0xd8, 0x5e, 0xf3, 0x48, 0xaa, 0x1f, 0x23, 0xc4, 0x84, 0x16, 0x78, 0x81, 0x0b,
+	0x98, 0xdf, 0xc9, 0xb0, 0x82, 0x11, 0xe6, 0x3c, 0xad, 0x2e, 0x75, 0x02, 0xbf, 0x2f, 0x9d, 0xcb,
+	0xc4, 0x42, 0xe4, 0xc6, 0x5d, 0xe5, 0xc3, 0x41, 0x32, 0xa1, 0x6d, 0x52, 0xde, 0x95, 0x69, 0x30,
+	0x3a, 0x9e, 0x49, 0x93, 0x9b, 0x6c, 0x0a, 0xdd, 0x24, 0x62, 0xd7, 0x15, 0x18, 0x90, 0x35, 0x5d,
+	0x4e, 0xc7, 0xae, 0xb2, 0x3c, 0xd1, 0x73, 0x27, 0xc5, 0x2d, 0xda, 0x22, 0x45, 0xe6, 0x1d, 0x72,
+	0xff, 0x23, 0x8e, 0xc5, 0x03, 0x27, 0xaf, 0xf1, 0x8a, 0x77, 0xf8, 0x8a, 0x13, 0x34, 0x6b, 0x68,
+	0x0e, 0x45, 0xfe, 0x0d, 0x62, 0x34, 0x3d, 0x24, 0x35, 0x43, 0x7b, 0xdc, 0x3d, 0x15, 0x73, 0xa6,
+	0x6f, 0xb8, 0x2b, 0x2d, 0x67, 0x18, 0xb2, 0xe4, 0xa8, 0x19, 0x7b, 0x05, 0xa6, 0x20, 0xfb, 0xe7,
+	0x53, 0xe8, 0x96, 0xb0, 0xac, 0x78, 0x94, 0x94, 0xa2, 0xa3, 0x81, 0x2e, 0x2a, 0xee, 0xd1, 0x39,
+	0xe6, 0x0e, 0x87, 0xf1, 0xbc, 0x63, 0xce, 0x20, 0x15, 0x20, 0x90, 0xc4, 0xc6, 0xce, 0x14, 0xce,
+	0x6e, 0x67, 0xb8, 0xff, 0xde, 0xf3, 0xdb, 0x07, 0x2c, 0xe8, 0x88, 0xa2, 0x07, 0xcf, 0xae, 0x38,
+	0x52, 0x6b, 0x31, 0x14, 0x0c, 0x0a, 0xfa, 0x2a, 0x29, 0xf2, 0x59, 0xa0, 0xe9, 0x4d, 0x78, 0x9e,
+	0x5e, 0xe0, 0x41, 0xc0, 0x98, 0xce, 0xb4, 0xd8, 0x2a, 0x0e, 0x03, 0xc1, 0x51, 0x94, 0x24, 0xd2,
+	0x59, 0x85, 0xdc, 0x0e, 0x73, 0x64, 0xa2, 0xf2, 0x64, 0x20, 0xe3, 0xd8, 0xf7, 0x48, 0x20, 0x4f,
+	0xaf, 0x15, 0x63, 0x11, 0x0c, 0x45, 0xfc, 0x67, 0x6f, 0x46, 0x6b, 0x6e, 0x80, 0xc5, 0xac, 0x91,
+	0x8a, 0x69, 0x0c, 0x18, 0x54, 0x74, 0x9f, 0x07, 0x74, 0xc9, 0x15, 0x63, 0xc1, 0x74, 0xee, 0x58,
+	0xa0, 0x92, 0x00, 0x83, 0x17, 0xa4, 0x38, 0xd3, 0xd7, 0xc9, 0x74, 0x28, 0xff, 0x0b, 0xf3, 0xd9,
+	0xa9, 0x62, 0x63, 0x2a, 0x38, 0xee, 0x15, 0x28, 0x54, 0x08, 0x5a, 0x80, 0xfd, 0x1f, 0x9d, 0x14,
+	0xca, 0x00, 0x90, 0x4e, 0x6e, 0xad, 0xb3, 0x4d, 0x6e, 0xb3, 0x67, 0xb2, 0xf0, 0x59, 0x9d, 0xc9,
+	0x77, 0xe3, 0x33, 0xa9, 0xf2, 0xe9, 0x65, 0x32, 0x35, 0xd8, 0x77, 0x42, 0x7d, 0x28, 0xef, 0xd4,
+	0x69, 0xe7, 0x96, 0x00, 0xf2, 0x53, 0x49, 0x54, 0xac, 0x14, 0x5f, 0xa0, 0x28, 0x65, 0x92, 0xe9,
+	0xf0, 0xbd, 0xec, 0xf5, 0xd8, 0x1e, 0xa6, 0x8d, 0x49, 0x92, 0xa9, 0x11, 0x90, 0xd0, 0xd0, 0x27,
+	0x48, 0x39, 0x60, 0x4e, 0xc8, 0x5d, 0x9e, 0x3a, 0x59, 0x97, 0xb5, 0x65, 0x82, 0x84, 0x7e, 0x22,
+	0x2c, 0x42, 0x95, 0x80, 0xf2, 0x1b, 0x90, 0x9a, 0x7e, 0x81, 0x4c, 0xf7, 0x4f, 0x6e, 0xfb, 0x68,
+	0x3c, 0x2f, 0x4e, 0x67, 0x79, 0xde, 0x16, 0x44, 0x71, 0x32, 0x97, 0x27, 0x81, 0xa4, 0xa2, 0x6f,
+	0xb2, 0x9d, 0x62, 0x03, 0x19, 0xb6, 0x7c, 0xdf, 0x16, 0xf8, 0xe6, 0x0c, 0x7a, 0x4c, 0x24, 0xdc,
+	0x89, 0xb4, 0xf2, 0xe4, 0xd2, 0x2e, 0x72, 0x69, 0x0b, 0xad, 0x51, 0x5e, 0x30, 0x4e, 0x00, 0x7d,
+	0x96, 0x54, 0xf6, 0x86, 0x81, 0x23, 0x80, 0x98, 0x8d, 0xde, 0xa7, 0x13, 0xf0, 0x35, 0x84, 0x73,
+	0x3d, 0x9e, 0x13, 0x09, 0x6c, 0x5d, 0x03, 0x20, 0x1e, 0xc2, 0x53, 0xb9, 0x25, 0x5f, 0xe6, 0x86,
+	0xca, 0xa1, 0xa9, 0x98, 0xaa, 0x0f, 0x25, 0xb6, 0x8e, 0x6c, 0x64, 0xb8, 0x74, 0xfd, 0x58, 0x4a,
+	0x38, 0x81, 0x0b, 0xfd, 0x0a, 0x29, 0xb7, 0x65, 0xa9, 0x26, 0x93, 0xda, 0x89, 0x43, 0x32, 0x51,
+	0x8d, 0x40, 0xc1, 0x00, 0x90, 0x91, 0xfd, 0xef, 0x12, 0x39, 0x87, 0xd6, 0x2a, 0xfa, 0x9d, 0xdd,
+	0x23, 0x5e, 0xff, 0x99, 0x31, 0xe4, 0xbe, 0x4c, 0x0c, 0x39, 0x9f, 0x22, 0x36, 0xa2, 0xc8, 0x77,
+	0xc8, 0xac, 0x72, 0xdf, 0x1a, 0x87, 0xd1, 0x64, 0x75, 0xb2, 0x13, 0xa7, 0xd6, 0x9d, 0x12, 0xa2,
+	0xac, 0x66, 0x2d, 0xc5, 0x1c, 0x32, 0xc2, 0x84, 0x78, 0xf4, 0x72, 0x5a, 0x7c, 0x31, 0x8f, 0x78,
+	0xf4, 0x68, 0xa3, 0xe2, 0xb7, 0x53, 0xcc, 0x21, 0x23, 0x4c, 0x88, 0x6f, 0x0f, 0xc3, 0xc8, 0xef,
+	0xc7, 0xe2, 0x4b, 0x79, 0xc4, 0xb7, 0x24, 0x8f, 0x31, 0xe2, 0x5b, 0x29, 0xe6, 0x90, 0x11, 0x46,
+	0xdf, 0xb1, 0xc8, 0xc5, 0xd7, 0x99, 0x77, 0xe0, 0x7a, 0xe1, 0x96, 0x3b, 0x60, 0x3d, 0x5e, 0x32,
+	0xc5, 0x13, 0x51, 0xc7, 0x74, 0x63, 0xb2, 0x89, 0x6c, 0xa4, 0x99, 0xa5, 0x67, 0x74, 0x27, 0x9f,
+	0xd1, 0xc5, 0x8d, 0xf1, 0xe2, 0xe0, 0xb8, 0x79, 0xd8, 0x7f, 0x2d, 0x62, 0xb7, 0xc1, 0xf4, 0xa7,
+	0xa6, 0x07, 0xb2, 0x3e, 0xc5, 0x03, 0x71, 0x1d, 0xcb, 0xb6, 0xbc, 0xdb, 0x7e, 0x95, 0xed, 0xbe,
+	0xe8, 0xfb, 0x07, 0xf9, 0x2c, 0xec, 0x85, 0x14, 0x0f, 0xe5, 0xd5, 0xa5, 0x8e, 0xd3, 0x08, 0xc8,
+	0x08, 0xa3, 0x47, 0xe4, 0x9c, 0x92, 0xa3, 0xa5, 0x2b, 0x03, 0x7b, 0x7e, 0xe2, 0xdc, 0xe4, 0xc5,
+	0x98, 0x85, 0x12, 0x7e, 0x5e, 0xb4, 0xa6, 0x53, 0x70, 0x48, 0x4b, 0xa2, 0x6f, 0x59, 0x64, 0x5e,
+	0xe6, 0x16, 0xad, 0x7d, 0xc7, 0xeb, 0xaa, 0xdd, 0x40, 0x03, 0x7b, 0x2e, 0x47, 0xfa, 0xa2, 0xb8,
+	0x28, 0xe1, 0xb2, 0x16, 0x58, 0xcf, 0xf0, 0x86, 0x11, 0x69, 0xf6, 0x4f, 0x8b, 0x84, 0x8e, 0xb6,
+	0xc3, 0xe8, 0x63, 0x29, 0x67, 0x71, 0x6f, 0xc6, 0x59, 0xcc, 0x9b, 0x23, 0x0c, 0x5f, 0xd1, 0x25,
+	0x65, 0x35, 0xeb, 0x7c, 0xf5, 0x12, 0xaa, 0x05, 0xf9, 0x8e, 0xd3, 0x1f, 0xb2, 0x17, 0xb9, 0x0e,
+	0xee, 0x22, 0xee, 0xd6, 0xe9, 0x24, 0x8d, 0x33, 0x13, 0x2d, 0x80, 0x86, 0x58, 0x67, 0x2b, 0xad,
+	0xe1, 0xf6, 0x3c, 0x9f, 0x7b, 0x7b, 0xb4, 0xcc, 0xb9, 0xb8, 0xd6, 0x56, 0x70, 0x30, 0xa5, 0xd8,
+	0xbf, 0x28, 0x13, 0x23, 0xff, 0xa1, 0xcf, 0x71, 0x2f, 0xc8, 0x82, 0x43, 0xb7, 0xcd, 0x56, 0xdb,
+	0x6d, 0x7f, 0xe8, 0x45, 0xb8, 0x31, 0xf1, 0x9d, 0xc5, 0x76, 0x0a, 0x0b, 0x19, 0x6a, 0xd9, 0xaf,
+	0x97, 0x8e, 0x0d, 0x37, 0x26, 0x57, 0xbf, 0x3e, 0x93, 0x1c, 0x63, 0x75, 0x8b, 0x8c, 0x53, 0xd5,
+	0x72, 0xf1, 0x0c, 0xab, 0x65, 0x97, 0x54, 0xc2, 0xb4, 0x2f, 0x7e, 0x3a, 0xd7, 0xe5, 0x03, 0xfa,
+	0xbc, 0xb8, 0x19, 0x17, 0x3b, 0xba, 0x98, 0xbd, 0xd0, 0x9a, 0x0a, 0xda, 0xe8, 0x6b, 0xf3, 0x68,
+	0x4d, 0x65, 0x04, 0x89, 0xd6, 0xd4, 0x37, 0x20, 0x63, 0x5e, 0xa3, 0x55, 0x03, 0xa6, 0x34, 0x18,
+	0x62, 0x2a, 0xf4, 0x29, 0xb5, 0x01, 0x20, 0xb9, 0xe8, 0x7f, 0xb8, 0x01, 0xeb, 0x33, 0x2f, 0x0a,
+	0x93, 0x2c, 0x52, 0x63, 0x43, 0x48, 0xf8, 0xd2, 0x21, 0x21, 0x83, 0xb8, 0x65, 0x83, 0x15, 0xc8,
+	0x6a, 0x8e, 0xb5, 0xa4, 0xfb, 0x3e, 0x49, 0xa2, 0x9e, 0xc0, 0xc1, 0x10, 0x44, 0xbf, 0x46, 0x2e,
+	0x25, 0xf9, 0xd8, 0x1a, 0x73, 0xf6, 0x64, 0xd8, 0xc0, 0xc6, 0xa6, 0xea, 0xf4, 0xdd, 0xcd, 0x87,
+	0x5f, 0x6a, 0x1d, 0x47, 0x04, 0xc7, 0x8f, 0xb7, 0xff, 0x5c, 0x22, 0x0b, 0x63, 0xa2, 0x2a, 0xbd,
+	0x8e, 0xbd, 0x8d, 0x5c, 0x2d, 0xbc, 0xf8, 0xf2, 0xc6, 0xe8, 0x6f, 0xc8, 0x56, 0x5e, 0xaf, 0x77,
+	0xab, 0x5a, 0x79, 0x9a, 0x13, 0x18, 0x5c, 0x75, 0xaf, 0xa2, 0x78, 0xaa, 0x5e, 0xc5, 0x06, 0xa1,
+	0xec, 0x4d, 0xae, 0x7e, 0x86, 0x19, 0x95, 0xf8, 0xab, 0x0a, 0xed, 0x4a, 0x73, 0x09, 0xa9, 0xe9,
+	0x95, 0x11, 0x0a, 0x18, 0x33, 0x4a, 0x14, 0x2a, 0x1d, 0x9f, 0xdb, 0x8e, 0x98, 0xaf, 0x34, 0x7e,
+	0xa3, 0x50, 0xb9, 0xaa, 0x11, 0x90, 0xd0, 0x70, 0x3b, 0x8e, 0x8b, 0xcf, 0x72, 0x9e, 0x46, 0xa4,
+	0x52, 0x84, 0x34, 0xab, 0x63, 0xab, 0x4e, 0xba, 0x4a, 0xe6, 0xe4, 0xa0, 0xd5, 0xad, 0x75, 0xdd,
+	0x09, 0x52, 0x17, 0xc1, 0x17, 0x71, 0x88, 0x6a, 0x84, 0x24, 0x68, 0xc8, 0xd2, 0xdb, 0xbf, 0x2d,
+	0x92, 0x85, 0x31, 0xa9, 0x68, 0xdc, 0x12, 0xb3, 0x6e, 0x45, 0x4b, 0xec, 0xb3, 0x30, 0x19, 0x9e,
+	0x5f, 0x79, 0x7e, 0xcb, 0x69, 0xef, 0x33, 0xbc, 0x55, 0x88, 0xd5, 0x76, 0x4d, 0x81, 0x41, 0xe3,
+	0xb5, 0x75, 0x95, 0x4e, 0x65, 0x5d, 0x13, 0x5b, 0xc4, 0x73, 0xba, 0x6e, 0x10, 0x6d, 0x9f, 0x2d,
+	0x27, 0xda, 0xc7, 0x86, 0x49, 0x1c, 0xb2, 0xd6, 0x52, 0x58, 0xc8, 0x50, 0xdb, 0xbf, 0xb6, 0xc8,
+	0xc2, 0x98, 0x94, 0x2e, 0x15, 0x67, 0xac, 0x33, 0x8c, 0x33, 0xa2, 0x21, 0x9d, 0x6c, 0xa0, 0xd9,
+	0x90, 0x56, 0x9b, 0x81, 0x58, 0xfb, 0xc3, 0x91, 0x79, 0x5e, 0x39, 0xe4, 0x3e, 0x39, 0x5f, 0xcb,
+	0x6e, 0x4b, 0x75, 0xc7, 0x94, 0xc9, 0x3c, 0x3e, 0x71, 0x06, 0xba, 0xee, 0x75, 0xfc, 0x4c, 0x5b,
+	0xec, 0x56, 0xb8, 0x16, 0xfb, 0x6f, 0x16, 0x99, 0x4d, 0x37, 0xdf, 0xe8, 0xdd, 0xa4, 0x38, 0x0c,
+	0x5c, 0x5c, 0x5d, 0x3c, 0xe2, 0x65, 0x58, 0x07, 0x01, 0x17, 0xe8, 0x80, 0x75, 0x50, 0x75, 0x31,
+	0x9a, 0x9b, 0x36, 0x08, 0x38, 0x1d, 0x90, 0xda, 0x20, 0xf0, 0xdf, 0x3c, 0x52, 0x45, 0x6b, 0xbe,
+	0x47, 0x04, 0x5b, 0x09, 0x83, 0xa4, 0x7b, 0x63, 0x00, 0xc1, 0x14, 0x61, 0xff, 0xca, 0x22, 0x74,
+	0x34, 0x47, 0xff, 0x9f, 0xb3, 0xa6, 0x1f, 0x17, 0xc8, 0x34, 0x6e, 0x24, 0xfd, 0x36, 0xaf, 0x8b,
+	0x52, 0x4a, 0xcf, 0x37, 0xc3, 0x4c, 0xd7, 0x34, 0x3e, 0x7f, 0x69, 0x38, 0x64, 0x64, 0xd1, 0xb7,
+	0x2d, 0x72, 0x9e, 0x83, 0xd2, 0xeb, 0xcb, 0xd7, 0x49, 0x7e, 0x21, 0xcb, 0xa6, 0x79, 0x09, 0x27,
+	0x71, 0x7e, 0x04, 0x05, 0xa3, 0x42, 0xed, 0xbf, 0x17, 0xc8, 0x28, 0xa1, 0x50, 0x69, 0x5b, 0x65,
+	0x34, 0xd6, 0xd8, 0x27, 0x51, 0x88, 0x15, 0x45, 0x89, 0x23, 0xdf, 0x14, 0xe5, 0x9b, 0xbc, 0x92,
+	0x2a, 0xba, 0xbb, 0x81, 0xdf, 0x7b, 0x99, 0xe7, 0xd5, 0xc6, 0x9b, 0x1e, 0xc9, 0x16, 0x90, 0x3d,
+	0x37, 0xea, 0x6a, 0x5b, 0x3f, 0x11, 0xca, 0xf7, 0xd2, 0x63, 0x54, 0x96, 0x71, 0x07, 0x8d, 0x9c,
+	0x21, 0x11, 0x32, 0x41, 0x9b, 0xcf, 0xfe, 0x09, 0x2f, 0x35, 0xb3, 0x45, 0xa2, 0x18, 0x2f, 0x8b,
+	0x8e, 0xf5, 0xb5, 0x6c, 0x91, 0xbe, 0xae, 0xc0, 0xa0, 0xf1, 0x74, 0x87, 0x4c, 0x8b, 0xd8, 0x06,
+	0x78, 0xa8, 0x27, 0x8e, 0x91, 0xf2, 0x4e, 0xf0, 0xaa, 0xe2, 0x00, 0x9a, 0x95, 0xfd, 0x27, 0x7e,
+	0x2a, 0x47, 0x6b, 0x23, 0xee, 0x06, 0x2f, 0x88, 0xab, 0x9c, 0xb8, 0x15, 0xbb, 0x9e, 0x9a, 0xe4,
+	0x5d, 0x38, 0xc9, 0x0b, 0x9b, 0x63, 0x68, 0x60, 0xec, 0xc8, 0x38, 0xbe, 0x17, 0x6e, 0x41, 0x7c,
+	0xb7, 0xb7, 0x09, 0x49, 0x2e, 0x49, 0xe9, 0xbd, 0xa4, 0xe4, 0x89, 0x37, 0x69, 0x6a, 0x72, 0x71,
+	0x0a, 0x29, 0x9f, 0xa2, 0x49, 0x0c, 0xbd, 0x9f, 0x4c, 0x1d, 0x3a, 0xbd, 0xa1, 0x7e, 0xeb, 0x17,
+	0x3f, 0x50, 0x78, 0x45, 0x00, 0x41, 0xe1, 0xec, 0xdf, 0x14, 0x48, 0xcd, 0xb8, 0x84, 0x38, 0x8b,
+	0x44, 0x76, 0x6a, 0xc0, 0x03, 0xab, 0x7e, 0x5b, 0xf1, 0x6c, 0xee, 0xfb, 0x11, 0x11, 0x9e, 0x93,
+	0x45, 0x88, 0xaf, 0x10, 0x14, 0xeb, 0x4c, 0xe6, 0x53, 0x3c, 0x8b, 0xcc, 0xc7, 0xfe, 0xbe, 0x45,
+	0xe6, 0x32, 0xb3, 0x11, 0x37, 0x33, 0x61, 0xfc, 0x85, 0x3b, 0x11, 0x97, 0x27, 0x09, 0x1d, 0x18,
+	0x54, 0x32, 0x41, 0x61, 0x61, 0xe4, 0x7a, 0xb2, 0xcf, 0x2b, 0x6e, 0x74, 0x0a, 0x99, 0x04, 0x25,
+	0x85, 0x85, 0x0c, 0xb5, 0xfd, 0x33, 0x8b, 0xdc, 0x75, 0x52, 0x3b, 0x4d, 0xa4, 0xab, 0xd8, 0x33,
+	0x8b, 0x53, 0x20, 0x2b, 0x9d, 0xae, 0x6e, 0xa4, 0xd1, 0x90, 0xa5, 0x17, 0x6f, 0x76, 0x0c, 0x10,
+	0x4e, 0x30, 0x0e, 0x76, 0xc6, 0x70, 0x30, 0xe9, 0xec, 0x1f, 0x59, 0xc4, 0x8c, 0x84, 0xe2, 0x45,
+	0xc6, 0x7e, 0x14, 0x0d, 0x24, 0x08, 0x6f, 0x12, 0xe4, 0x8b, 0x8c, 0x17, 0x77, 0x76, 0xb6, 0x24,
+	0x10, 0x12, 0xbc, 0xb8, 0xd1, 0x13, 0x1f, 0xa1, 0xa2, 0x2e, 0x25, 0x37, 0x7a, 0x82, 0x7a, 0x5b,
+	0x91, 0x1b, 0x14, 0xe2, 0xfa, 0xdf, 0xf3, 0x15, 0xb1, 0x7a, 0x24, 0x5a, 0x53, 0x59, 0xa8, 0xa2,
+	0xd4, 0x38, 0xfb, 0xf7, 0x3c, 0x9e, 0x8c, 0x5c, 0x31, 0xd1, 0x1b, 0x71, 0x5c, 0xb4, 0xf2, 0x1b,
+	0xcb, 0xf8, 0x58, 0x7a, 0xea, 0x0d, 0x7e, 0xd7, 0x22, 0x24, 0xa9, 0x4b, 0x68, 0x8f, 0xcc, 0x28,
+	0xc6, 0xa9, 0x60, 0x9c, 0x67, 0xc2, 0x17, 0x70, 0x02, 0x33, 0xdb, 0x06, 0x3f, 0x48, 0x71, 0x17,
+	0xf9, 0x76, 0x5f, 0xb4, 0x6e, 0xa4, 0xd9, 0x14, 0xd2, 0xef, 0x91, 0x5e, 0xd2, 0x08, 0x48, 0x68,
+	0xec, 0x1f, 0x4c, 0x91, 0x85, 0x31, 0x5d, 0xee, 0xff, 0xe3, 0x82, 0x98, 0x47, 0x37, 0xf5, 0x68,
+	0x24, 0xcc, 0x46, 0x47, 0xf5, 0xa6, 0x44, 0x54, 0x96, 0xea, 0x1f, 0xf1, 0xbe, 0xc0, 0xf5, 0xda,
+	0xaa, 0x9b, 0xe2, 0xe8, 0xfa, 0x46, 0x75, 0xe8, 0x12, 0x30, 0x98, 0x34, 0xe9, 0x82, 0xa8, 0x7c,
+	0x53, 0x25, 0xf2, 0x0c, 0x3e, 0x5c, 0x57, 0x4f, 0x3c, 0xa6, 0xf3, 0x6c, 0x88, 0xbc, 0x04, 0x06,
+	0x83, 0x0d, 0xa4, 0x98, 0xd2, 0xef, 0xf1, 0x30, 0x8f, 0x80, 0xd5, 0x20, 0x72, 0x3b, 0x4e, 0x3b,
+	0xbe, 0x0e, 0x3e, 0xa5, 0xc3, 0x5f, 0xc4, 0xc5, 0xcd, 0x43, 0x86, 0x3d, 0x8c, 0x08, 0xb4, 0x6f,
+	0xf0, 0xa3, 0x9e, 0x4d, 0x65, 0x6e, 0x2e, 0x4e, 0x32, 0xf9, 0x20, 0x3b, 0x13, 0x27, 0xd5, 0x3b,
+	0x6c, 0x85, 0xb3, 0xdf, 0xe1, 0xb5, 0x48, 0x26, 0x13, 0xcc, 0x55, 0x6a, 0xdd, 0x30, 0x4b, 0xad,
+	0x53, 0x27, 0xb4, 0xa9, 0xa2, 0xcb, 0xee, 0x90, 0xd9, 0x74, 0x87, 0xd9, 0xc8, 0xff, 0xad, 0x93,
+	0xf2, 0x7f, 0xf1, 0x5a, 0xd0, 0x11, 0xcf, 0x06, 0xb9, 0x11, 0xe3, 0x05, 0x71, 0xdc, 0xa0, 0x5c,
+	0x45, 0x38, 0xc4, 0x14, 0xcd, 0x07, 0xde, 0xfb, 0xf0, 0xf2, 0x6d, 0xef, 0xf3, 0xdf, 0x3f, 0xf9,
+	0xef, 0xad, 0x8f, 0x2e, 0x5b, 0xef, 0xf1, 0xdf, 0xfb, 0xfc, 0xf7, 0x2f, 0xfe, 0xfb, 0xe1, 0xc7,
+	0x97, 0x6f, 0xbb, 0x51, 0x38, 0x5c, 0xfe, 0x6f, 0x00, 0x00, 0x00, 0xff, 0xff, 0x37, 0xef, 0xc2,
+	0xa1, 0x46, 0x32, 0x00, 0x00,
+}

@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
 
-set -o errexit
-set -o nounset
-set -o pipefail
 # this will allow matching files also in subdirs with **/*.json pattern
 shopt -s globstar
 
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/lib/init.sh"
-
-# Go to the top of the tree.
-cd "${OS_ROOT}"
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 GODEP_ROOT="${OS_ROOT}/vendor"
 KUBE_ROOT=${1:-""}
@@ -65,6 +58,7 @@ rsync -av \
   --exclude='*' \
   --prune-empty-dirs \
   $KUBE_ROOT/vendor/ $GODEP_ROOT <<EOF
+/github.com/onsi/ginkgo/ginkgo/**.go
 /github.com/golang/mock/gomock/**.go
 /github.com/google/cadvisor/info/v1/test/**.go
 EOF

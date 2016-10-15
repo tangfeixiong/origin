@@ -273,7 +273,6 @@ func (step *startRuntimeImageAndUploadFilesStep) execute(ctx *postExecutorStepCo
 
 	opts := dockerpkg.RunContainerOptions{
 		Image:           image,
-		Entrypoint:      DefaultEntrypoint,
 		PullImage:       false, // The PullImage is false because we've already pulled the image
 		CommandExplicit: []string{"/bin/sh", "-c", cmd},
 		Stdout:          outWriter,
@@ -322,16 +321,21 @@ func (step *startRuntimeImageAndUploadFilesStep) execute(ctx *postExecutorStepCo
 		return err
 	}
 
-	go dockerpkg.StreamContainerIO(outReader, nil, glog.V(0).Info)
+	go dockerpkg.StreamContainerIO(outReader, nil, func(a ...interface{}) { glog.V(0).Info(a...) })
 
 	errOutput := ""
-	go dockerpkg.StreamContainerIO(errReader, &errOutput, glog.Error)
+	go dockerpkg.StreamContainerIO(errReader, &errOutput, func(a ...interface{}) { glog.Info(a...) })
 
 	// switch to the next stage of post executors steps
 	step.builder.postExecutorStage++
 
 	err = step.docker.RunContainer(opts)
+	// close so we avoid data race condition on errOutput
+	errReader.Close()
 	if e, ok := err.(errors.ContainerError); ok {
+		// even with deferred close above, close errReader now so we avoid data race condition on errOutput;
+		// closing will cause StreamContainerIO to exit, thus releasing the writer in the equation
+		errReader.Close()
 		return errors.NewContainerError(image, e.ErrorCode, errOutput)
 	}
 
@@ -415,18 +419,20 @@ func createLabelsForResultingImage(builder *STI, docker dockerpkg.Docker, baseIm
 		glog.V(0).Infof("error: Unable to read existing labels from the base image %s", baseImage)
 	}
 
-	return mergeLabels(generatedLabels, existingLabels)
+	configLabels := builder.config.Labels
+
+	return mergeLabels(configLabels, generatedLabels, existingLabels)
 }
 
-func mergeLabels(newLabels, existingLabels map[string]string) map[string]string {
-	if existingLabels == nil {
-		return newLabels
-	}
+func mergeLabels(configLabels, generatedLabels, existingLabels map[string]string) map[string]string {
 	result := map[string]string{}
 	for k, v := range existingLabels {
 		result[k] = v
 	}
-	for k, v := range newLabels {
+	for k, v := range generatedLabels {
+		result[k] = v
+	}
+	for k, v := range configLabels {
 		result[k] = v
 	}
 	return result

@@ -19,6 +19,12 @@ const (
 	BuildCloneAnnotation = "openshift.io/build.clone-of"
 	// BuildPodNameAnnotation is an annotation whose value is the name of the pod running this build
 	BuildPodNameAnnotation = "openshift.io/build.pod-name"
+	// BuildJenkinsStatusJSONAnnotation is an annotation holding the Jenkins status information
+	BuildJenkinsStatusJSONAnnotation = "openshift.io/jenkins-status-json"
+	// BuildJenkinsLogURLAnnotation is an annotation holding a link to the Jenkins build console log
+	BuildJenkinsLogURLAnnotation = "openshift.io/jenkins-log-url"
+	// BuildJenkinsBuildURIAnnotation is an annotation holding a link to the Jenkins build
+	BuildJenkinsBuildURIAnnotation = "openshift.io/jenkins-build-uri"
 	// BuildLabel is the key of a Pod label whose value is the Name of a Build which is run.
 	// NOTE: The value for this label may not contain the entire Build name because it will be
 	// truncated to maximum label length.
@@ -387,6 +393,18 @@ type GitSourceRevision struct {
 	Message string
 }
 
+// ProxyConfig defines what proxies to use for an operation
+type ProxyConfig struct {
+	// HTTPProxy is a proxy used to reach the git repository over http
+	HTTPProxy *string
+
+	// HTTPSProxy is a proxy used to reach the git repository over https
+	HTTPSProxy *string
+
+	// NoProxy is the list of domains for which the proxy should not be used
+	NoProxy *string
+}
+
 // GitBuildSource defines the parameters of a Git SCM
 type GitBuildSource struct {
 	// URI points to the source that will be built. The structure of the source
@@ -396,11 +414,8 @@ type GitBuildSource struct {
 	// Ref is the branch/tag/ref to build.
 	Ref string
 
-	// HTTPProxy is a proxy used to reach the git repository over http
-	HTTPProxy *string
-
-	// HTTPSProxy is a proxy used to reach the git repository over https
-	HTTPSProxy *string
+	// ProxyConfig defines the proxies to use for the git clone operation
+	ProxyConfig
 }
 
 // SourceControlUser defines the identity of a user of source control
@@ -424,7 +439,7 @@ type BuildStrategy struct {
 	CustomStrategy *CustomBuildStrategy
 
 	// JenkinsPipelineStrategy holds the parameters to the Jenkins Pipeline build strategy.
-	// This strategy is experimental.
+	// This strategy is in tech preview.
 	JenkinsPipelineStrategy *JenkinsPipelineBuildStrategy
 }
 
@@ -512,14 +527,28 @@ type SourceBuildStrategy struct {
 	Scripts string
 
 	// Incremental flag forces the Source build to do incremental builds if true.
-	Incremental bool
+	Incremental *bool
 
 	// ForcePull describes if the builder should pull the images from registry prior to building.
 	ForcePull bool
+
+	// RuntimeImage is an optional image that is used to run an application
+	// without unneeded dependencies installed. The building of the application
+	// is still done in the builder image but, post build, you can copy the
+	// needed artifacts in the runtime image for use.
+	// This field and the feature it enables are in tech preview.
+	RuntimeImage *kapi.ObjectReference
+
+	// RuntimeArtifacts specifies a list of source/destination pairs that will be
+	// copied from the builder to a runtime image. sourcePath can be a file or
+	// directory. destinationDir must be a directory. destinationDir can also be
+	// empty or equal to ".", in this case it just refers to the root of WORKDIR.
+	// This field and the feature it enables are in tech preview.
+	RuntimeArtifacts []ImageSourcePath
 }
 
 // JenkinsPipelineStrategy holds parameters specific to a Jenkins Pipeline build.
-// This strategy is experimental.
+// This strategy is in tech preview.
 type JenkinsPipelineBuildStrategy struct {
 	// JenkinsfilePath is the optional path of the Jenkinsfile that will be used to configure the pipeline
 	// relative to the root of the context (contextDir). If both JenkinsfilePath & Jenkinsfile are
@@ -632,6 +661,19 @@ type BuildOutput struct {
 	// up the authentication for executing the Docker push to authentication
 	// enabled Docker Registry (or Docker Hub).
 	PushSecret *kapi.LocalObjectReference
+
+	// ImageLabels define a list of labels that are applied to the resulting image. If there
+	// are multiple labels with the same name then the last one in the list is used.
+	ImageLabels []ImageLabel
+}
+
+// ImageLabel represents a label applied to the resulting image.
+type ImageLabel struct {
+	// Name defines the name of the label. It must have non-zero length.
+	Name string
+
+	// Value defines the literal value of the label.
+	Value string
 }
 
 // BuildConfig is a template which can be used to create new builds.
@@ -792,6 +834,7 @@ type GitInfo struct {
 	// Refs is a list of GitRefs for the provided repo - generally sent
 	// when used from a post-receive hook. This field is optional and is
 	// used when sending multiple refs
+	// +k8s:conversion-gen=false
 	Refs []GitRefInfo
 }
 

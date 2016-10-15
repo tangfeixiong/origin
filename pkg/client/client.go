@@ -34,6 +34,7 @@ type Interface interface {
 	HostSubnetsInterface
 	NetNamespacesInterface
 	ClusterNetworkingInterface
+	EgressNetworkPoliciesNamespacer
 	IdentitiesInterface
 	UsersInterface
 	GroupsInterface
@@ -47,6 +48,7 @@ type Interface interface {
 	SubjectAccessReviews
 	LocalSubjectAccessReviewsNamespacer
 	SelfSubjectRulesReviewsNamespacer
+	SubjectRulesReviewsNamespacer
 	TemplatesNamespacer
 	TemplateConfigsNamespacer
 	OAuthClientsInterface
@@ -145,6 +147,11 @@ func (c *Client) ClusterNetwork() ClusterNetworkInterface {
 	return newClusterNetwork(c)
 }
 
+// EgressNetworkPolicies provides a REST client for EgressNetworkPolicy
+func (c *Client) EgressNetworkPolicies(namespace string) EgressNetworkPolicyInterface {
+	return newEgressNetworkPolicy(c, namespace)
+}
+
 // Users provides a REST client for User
 func (c *Client) Users() UserInterface {
 	return newUsers(c)
@@ -237,6 +244,10 @@ func (c *Client) SubjectAccessReviews() SubjectAccessReviewInterface {
 
 func (c *Client) SelfSubjectRulesReviews(namespace string) SelfSubjectRulesReviewInterface {
 	return newSelfSubjectRulesReviews(c, namespace)
+}
+
+func (c *Client) SubjectRulesReviews(namespace string) SubjectRulesReviewInterface {
+	return newSubjectRulesReviews(c, namespace)
 }
 
 func (c *Client) OAuthClients() OAuthClientInterface {

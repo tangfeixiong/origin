@@ -17,14 +17,13 @@ import (
 
 	osclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
-	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
 const (
 	// We must avoid creating new replication controllers until the deployment config and replication
 	// controller stores have synced. If it hasn't synced, to avoid a hot loop, we'll wait this long
 	// between checks.
-	StoreSyncedPollPeriod = 100 * time.Millisecond
+	storeSyncedPollPeriod = 100 * time.Millisecond
 	// MaxRetries is the number of times a deployment config will be retried before it is dropped out
 	// of the queue.
 	MaxRetries = 5
@@ -100,7 +99,7 @@ func (c *DeploymentConfigController) waitForSyncedStores(ready chan<- struct{}, 
 	for !c.dcStoreSynced() || !c.rcStoreSynced() || !c.podStoreSynced() {
 		glog.V(4).Infof("Waiting for the dc, rc, and pod caches to sync before starting the deployment config controller workers")
 		select {
-		case <-time.After(StoreSyncedPollPeriod):
+		case <-time.After(storeSyncedPollPeriod):
 		case <-stopCh:
 			return
 		}
@@ -115,9 +114,15 @@ func (c *DeploymentConfigController) addDeploymentConfig(obj interface{}) {
 }
 
 func (c *DeploymentConfigController) updateDeploymentConfig(old, cur interface{}) {
-	dc := cur.(*deployapi.DeploymentConfig)
-	glog.V(4).Infof("Updating deployment config %q", dc.Name)
-	c.enqueueDeploymentConfig(dc)
+	// A periodic relist will send update events for all known configs.
+	newDc := cur.(*deployapi.DeploymentConfig)
+	oldDc := old.(*deployapi.DeploymentConfig)
+	if newDc.ResourceVersion == oldDc.ResourceVersion {
+		return
+	}
+
+	glog.V(4).Infof("Updating deployment config %q", newDc.Name)
+	c.enqueueDeploymentConfig(newDc)
 }
 
 func (c *DeploymentConfigController) deleteDeploymentConfig(obj interface{}) {
@@ -156,11 +161,12 @@ func (c *DeploymentConfigController) addReplicationController(obj interface{}) {
 // controller and requeues the deployment config.
 func (c *DeploymentConfigController) updateReplicationController(old, cur interface{}) {
 	// A periodic relist will send update events for all known controllers.
-	if kapi.Semantic.DeepEqual(old, cur) {
+	curRC := cur.(*kapi.ReplicationController)
+	oldRC := old.(*kapi.ReplicationController)
+	if curRC.ResourceVersion == oldRC.ResourceVersion {
 		return
 	}
 
-	curRC := cur.(*kapi.ReplicationController)
 	glog.V(4).Infof("Replication controller %q updated.", curRC.Name)
 	if dc, err := c.dcStore.GetConfigForController(curRC); err == nil && dc != nil {
 		c.enqueueDeploymentConfig(dc)
@@ -201,7 +207,13 @@ func (c *DeploymentConfigController) addPod(obj interface{}) {
 }
 
 func (c *DeploymentConfigController) updatePod(old, cur interface{}) {
-	if dc, err := c.dcStore.GetConfigForPod(cur.(*kapi.Pod)); err == nil && dc != nil {
+	curPod := cur.(*kapi.Pod)
+	oldPod := old.(*kapi.Pod)
+	if curPod.ResourceVersion == oldPod.ResourceVersion {
+		return
+	}
+
+	if dc, err := c.dcStore.GetConfigForPod(curPod); err == nil && dc != nil {
 		c.enqueueDeploymentConfig(dc)
 	}
 }
@@ -258,13 +270,7 @@ func (c *DeploymentConfigController) work() bool {
 		return false
 	}
 
-	copied, err := deployutil.DeploymentConfigDeepCopy(dc)
-	if err != nil {
-		glog.Error(err.Error())
-		return false
-	}
-
-	err = c.Handle(copied)
+	err = c.Handle(dc)
 	c.handleErr(err, key)
 
 	return false

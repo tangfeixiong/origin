@@ -405,9 +405,11 @@ func TestBuildConfigGitSourceWithProxyFailure(t *testing.T) {
 			CommonSpec: buildapi.CommonSpec{
 				Source: buildapi.BuildSource{
 					Git: &buildapi.GitBuildSource{
-						URI:        "git://github.com/my/repository",
-						HTTPProxy:  &proxyAddress,
-						HTTPSProxy: &proxyAddress,
+						URI: "git://github.com/my/repository",
+						ProxyConfig: buildapi.ProxyConfig{
+							HTTPProxy:  &proxyAddress,
+							HTTPSProxy: &proxyAddress,
+						},
 					},
 				},
 				Strategy: buildapi.BuildStrategy{
@@ -988,8 +990,10 @@ func TestValidateSource(t *testing.T) {
 			path: "git.httpproxy",
 			source: &buildapi.BuildSource{
 				Git: &buildapi.GitBuildSource{
-					URI:       "https://example.com/repo.git",
-					HTTPProxy: &invalidProxyAddress,
+					URI: "https://example.com/repo.git",
+					ProxyConfig: buildapi.ProxyConfig{
+						HTTPProxy: &invalidProxyAddress,
+					},
 				},
 				ContextDir: "contextDir",
 			},
@@ -1000,8 +1004,10 @@ func TestValidateSource(t *testing.T) {
 			path: "git.httpsproxy",
 			source: &buildapi.BuildSource{
 				Git: &buildapi.GitBuildSource{
-					URI:        "https://example.com/repo.git",
-					HTTPSProxy: &invalidProxyAddress,
+					URI: "https://example.com/repo.git",
+					ProxyConfig: buildapi.ProxyConfig{
+						HTTPSProxy: &invalidProxyAddress,
+					},
 				},
 				ContextDir: "contextDir",
 			},
@@ -1269,7 +1275,7 @@ func TestValidateCommonSpec(t *testing.T) {
 				Output: buildapi.BuildOutput{
 					To: &kapi.ObjectReference{
 						Kind: "DockerImage",
-						Name: "some/long/value/with/no/meaning",
+						Name: "///some/long/value/with/no/meaning",
 					},
 				},
 			},
@@ -1290,7 +1296,7 @@ func TestValidateCommonSpec(t *testing.T) {
 				Output: buildapi.BuildOutput{
 					To: &kapi.ObjectReference{
 						Kind: "ImageStream",
-						Name: "some/long/value/with/no/meaning",
+						Name: "///some/long/value/with/no/meaning",
 					},
 				},
 			},
@@ -1311,7 +1317,7 @@ func TestValidateCommonSpec(t *testing.T) {
 				Output: buildapi.BuildOutput{
 					To: &kapi.ObjectReference{
 						Kind: "ImageStreamTag",
-						Name: "some/long/value/with/no/meaning",
+						Name: "///some/long/value/with/no/meaning",
 					},
 				},
 			},
@@ -1332,7 +1338,7 @@ func TestValidateCommonSpec(t *testing.T) {
 				Output: buildapi.BuildOutput{
 					To: &kapi.ObjectReference{
 						Kind: "ImageStreamTag",
-						Name: "some/long/value/with/no/meaning:latest",
+						Name: "///some/long/value/with/no/meaning:latest",
 					},
 				},
 			},
@@ -1889,6 +1895,116 @@ func TestValidateCommonSpec(t *testing.T) {
 				},
 			},
 		},
+		// 32
+		{
+			string(field.ErrorTypeRequired) + "output.imageLabels[0].name",
+			buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					ImageLabels: []buildapi.ImageLabel{
+						{
+							Name:  "",
+							Value: "",
+						},
+					},
+				},
+			},
+		},
+		// 33
+		{
+			string(field.ErrorTypeInvalid) + "output.imageLabels[0].name",
+			buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					ImageLabels: []buildapi.ImageLabel{
+						{
+							Name:  "%$#@!",
+							Value: "",
+						},
+					},
+				},
+			},
+		},
+		// 34
+		// duplicate labels
+		{
+			string(field.ErrorTypeInvalid) + "output.imageLabels[1].name",
+			buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					ImageLabels: []buildapi.ImageLabel{
+						{
+							Name:  "really",
+							Value: "yes",
+						},
+						{
+							Name:  "really",
+							Value: "no",
+						},
+					},
+				},
+			},
+		},
+		// 35
+		// nonconsecutive duplicate labels
+		{
+			string(field.ErrorTypeInvalid) + "output.imageLabels[3].name",
+			buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					ImageLabels: []buildapi.ImageLabel{
+						{
+							Name:  "a",
+							Value: "1",
+						},
+						{
+							Name:  "really",
+							Value: "yes",
+						},
+						{
+							Name:  "b",
+							Value: "2",
+						},
+						{
+							Name:  "really",
+							Value: "no",
+						},
+						{
+							Name:  "c",
+							Value: "3",
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for count, config := range errorCases {
@@ -2047,6 +2163,127 @@ func TestValidateCommonSpecSuccess(t *testing.T) {
 					To: &kapi.ObjectReference{
 						Kind: "DockerImage",
 						Name: "repository/data",
+					},
+				},
+			},
+		},
+		// 6
+		{
+			CommonSpec: buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					SourceStrategy: &buildapi.SourceBuildStrategy{
+						From: kapi.ObjectReference{
+							Kind: "DockerImage",
+							Name: "reponame",
+						},
+					},
+				},
+				Output: buildapi.BuildOutput{
+					To: &kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: "registry/project/repository/data",
+					},
+				},
+			},
+		},
+		// 7
+		{
+			CommonSpec: buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					SourceStrategy: &buildapi.SourceBuildStrategy{
+						From: kapi.ObjectReference{
+							Kind: "DockerImage",
+							Name: "registry/project/repository/data",
+						},
+					},
+				},
+				Output: buildapi.BuildOutput{
+					To: &kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: "repository/data",
+					},
+				},
+			},
+		},
+		// 6
+		{
+			CommonSpec: buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					ImageLabels: nil,
+				},
+			},
+		},
+		// 7
+		{
+			CommonSpec: buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					ImageLabels: []buildapi.ImageLabel{},
+				},
+			},
+		},
+		// 8
+		{
+			CommonSpec: buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					ImageLabels: []buildapi.ImageLabel{
+						{
+							Name: "key",
+						},
+					},
+				},
+			},
+		},
+		// 9
+		{
+			CommonSpec: buildapi.CommonSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					ImageLabels: []buildapi.ImageLabel{
+						{
+							Name:  "key",
+							Value: "value )(*&",
+						},
 					},
 				},
 			},

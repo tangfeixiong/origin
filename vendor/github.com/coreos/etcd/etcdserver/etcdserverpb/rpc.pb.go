@@ -7,18 +7,21 @@ package etcdserverpb
 import (
 	"fmt"
 
-	proto "github.com/gogo/protobuf/proto"
+	proto "github.com/golang/protobuf/proto"
 
 	math "math"
 
-	context "golang.org/x/net/context"
+	authpb "github.com/coreos/etcd/auth/authpb"
 
-	grpc "google.golang.org/grpc"
+	io "io"
 )
 
-import storagepb "github.com/coreos/etcd/storage/storagepb"
+import mvccpb "github.com/coreos/etcd/mvcc/mvccpb"
 
-import io "io"
+import (
+	context "golang.org/x/net/context"
+	grpc "google.golang.org/grpc"
+)
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -44,6 +47,7 @@ var AlarmType_value = map[string]int32{
 func (x AlarmType) String() string {
 	return proto.EnumName(AlarmType_name, int32(x))
 }
+func (AlarmType) EnumDescriptor() ([]byte, []int) { return fileDescriptorRpc, []int{0} }
 
 type RangeRequest_SortOrder int32
 
@@ -67,6 +71,7 @@ var RangeRequest_SortOrder_value = map[string]int32{
 func (x RangeRequest_SortOrder) String() string {
 	return proto.EnumName(RangeRequest_SortOrder_name, int32(x))
 }
+func (RangeRequest_SortOrder) EnumDescriptor() ([]byte, []int) { return fileDescriptorRpc, []int{1, 0} }
 
 type RangeRequest_SortTarget int32
 
@@ -96,6 +101,7 @@ var RangeRequest_SortTarget_value = map[string]int32{
 func (x RangeRequest_SortTarget) String() string {
 	return proto.EnumName(RangeRequest_SortTarget_name, int32(x))
 }
+func (RangeRequest_SortTarget) EnumDescriptor() ([]byte, []int) { return fileDescriptorRpc, []int{1, 1} }
 
 type Compare_CompareResult int32
 
@@ -119,6 +125,7 @@ var Compare_CompareResult_value = map[string]int32{
 func (x Compare_CompareResult) String() string {
 	return proto.EnumName(Compare_CompareResult_name, int32(x))
 }
+func (Compare_CompareResult) EnumDescriptor() ([]byte, []int) { return fileDescriptorRpc, []int{9, 0} }
 
 type Compare_CompareTarget int32
 
@@ -145,6 +152,32 @@ var Compare_CompareTarget_value = map[string]int32{
 func (x Compare_CompareTarget) String() string {
 	return proto.EnumName(Compare_CompareTarget_name, int32(x))
 }
+func (Compare_CompareTarget) EnumDescriptor() ([]byte, []int) { return fileDescriptorRpc, []int{9, 1} }
+
+type WatchCreateRequest_FilterType int32
+
+const (
+	// filter out put event.
+	WatchCreateRequest_NOPUT WatchCreateRequest_FilterType = 0
+	// filter out delete event.
+	WatchCreateRequest_NODELETE WatchCreateRequest_FilterType = 1
+)
+
+var WatchCreateRequest_FilterType_name = map[int32]string{
+	0: "NOPUT",
+	1: "NODELETE",
+}
+var WatchCreateRequest_FilterType_value = map[string]int32{
+	"NOPUT":    0,
+	"NODELETE": 1,
+}
+
+func (x WatchCreateRequest_FilterType) String() string {
+	return proto.EnumName(WatchCreateRequest_FilterType_name, int32(x))
+}
+func (WatchCreateRequest_FilterType) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptorRpc, []int{19, 0}
+}
 
 type AlarmRequest_AlarmAction int32
 
@@ -168,59 +201,90 @@ var AlarmRequest_AlarmAction_value = map[string]int32{
 func (x AlarmRequest_AlarmAction) String() string {
 	return proto.EnumName(AlarmRequest_AlarmAction_name, int32(x))
 }
+func (AlarmRequest_AlarmAction) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptorRpc, []int{41, 0}
+}
 
 type ResponseHeader struct {
-	ClusterId uint64 `protobuf:"varint,1,opt,name=cluster_id,proto3" json:"cluster_id,omitempty"`
-	MemberId  uint64 `protobuf:"varint,2,opt,name=member_id,proto3" json:"member_id,omitempty"`
-	// revision of the store when the request was applied.
+	// cluster_id is the ID of the cluster which sent the response.
+	ClusterId uint64 `protobuf:"varint,1,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	// member_id is the ID of the member which sent the response.
+	MemberId uint64 `protobuf:"varint,2,opt,name=member_id,json=memberId,proto3" json:"member_id,omitempty"`
+	// revision is the key-value store revision when the request was applied.
 	Revision int64 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
-	// term of raft when the request was applied.
-	RaftTerm uint64 `protobuf:"varint,4,opt,name=raft_term,proto3" json:"raft_term,omitempty"`
+	// raft_term is the raft term when the request was applied.
+	RaftTerm uint64 `protobuf:"varint,4,opt,name=raft_term,json=raftTerm,proto3" json:"raft_term,omitempty"`
 }
 
-func (m *ResponseHeader) Reset()         { *m = ResponseHeader{} }
-func (m *ResponseHeader) String() string { return proto.CompactTextString(m) }
-func (*ResponseHeader) ProtoMessage()    {}
+func (m *ResponseHeader) Reset()                    { *m = ResponseHeader{} }
+func (m *ResponseHeader) String() string            { return proto.CompactTextString(m) }
+func (*ResponseHeader) ProtoMessage()               {}
+func (*ResponseHeader) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{0} }
 
 type RangeRequest struct {
-	// if the range_end is not given, the request returns the key.
+	// key is the first key for the range. If range_end is not given, the request only looks up key.
 	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	// if the range_end is given, it gets the keys in range [key, range_end)
-	// if range_end is nonempty, otherwise it returns all keys >= key.
-	RangeEnd []byte `protobuf:"bytes,2,opt,name=range_end,proto3" json:"range_end,omitempty"`
-	// limit the number of keys returned.
+	// range_end is the upper bound on the requested range [key, range_end).
+	// If range_end is '\0', the range is all keys >= key.
+	// If the range_end is one bit larger than the given key,
+	// then the range requests get the all keys with the prefix (the given key).
+	// If both key and range_end are '\0', then range requests returns all keys.
+	RangeEnd []byte `protobuf:"bytes,2,opt,name=range_end,json=rangeEnd,proto3" json:"range_end,omitempty"`
+	// limit is a limit on the number of keys returned for the request.
 	Limit int64 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
-	// range over the store at the given revision.
-	// if revision is less or equal to zero, range over the newest store.
-	// if the revision has been compacted, ErrCompaction will be returned in
-	// response.
+	// revision is the point-in-time of the key-value store to use for the range.
+	// If revision is less or equal to zero, the range is over the newest key-value store.
+	// If the revision has been compacted, ErrCompacted is returned as a response.
 	Revision int64 `protobuf:"varint,4,opt,name=revision,proto3" json:"revision,omitempty"`
-	// sort_order is the requested order for returned the results
-	SortOrder RangeRequest_SortOrder `protobuf:"varint,5,opt,name=sort_order,proto3,enum=etcdserverpb.RangeRequest_SortOrder" json:"sort_order,omitempty"`
-	// sort_target is the kv field to use for sorting
-	SortTarget RangeRequest_SortTarget `protobuf:"varint,6,opt,name=sort_target,proto3,enum=etcdserverpb.RangeRequest_SortTarget" json:"sort_target,omitempty"`
-	// range request is linearizable by default. Linearizable requests has a higher
-	// latency and lower throughput than serializable request.
-	// To reduce latency, serializable can be set. If serializable is set, range request
-	// will be serializable, but not linearizable with other requests.
-	// Serializable range can be served locally without waiting for other nodes in the cluster.
+	// sort_order is the order for returned sorted results.
+	SortOrder RangeRequest_SortOrder `protobuf:"varint,5,opt,name=sort_order,json=sortOrder,proto3,enum=etcdserverpb.RangeRequest_SortOrder" json:"sort_order,omitempty"`
+	// sort_target is the key-value field to use for sorting.
+	SortTarget RangeRequest_SortTarget `protobuf:"varint,6,opt,name=sort_target,json=sortTarget,proto3,enum=etcdserverpb.RangeRequest_SortTarget" json:"sort_target,omitempty"`
+	// serializable sets the range request to use serializable member-local reads.
+	// Range requests are linearizable by default; linearizable requests have higher
+	// latency and lower throughput than serializable requests but reflect the current
+	// consensus of the cluster. For better performance, in exchange for possible stale reads,
+	// a serializable range request is served locally without needing to reach consensus
+	// with other nodes in the cluster.
 	Serializable bool `protobuf:"varint,7,opt,name=serializable,proto3" json:"serializable,omitempty"`
+	// keys_only when set returns only the keys and not the values.
+	KeysOnly bool `protobuf:"varint,8,opt,name=keys_only,json=keysOnly,proto3" json:"keys_only,omitempty"`
+	// count_only when set returns only the count of the keys in the range.
+	CountOnly bool `protobuf:"varint,9,opt,name=count_only,json=countOnly,proto3" json:"count_only,omitempty"`
+	// min_mod_revision is the lower bound for returned key mod revisions; all keys with
+	// lesser mod revisions will be filtered away.
+	MinModRevision int64 `protobuf:"varint,10,opt,name=min_mod_revision,json=minModRevision,proto3" json:"min_mod_revision,omitempty"`
+	// max_mod_revision is the upper bound for returned key mod revisions; all keys with
+	// greater mod revisions will be filtered away.
+	MaxModRevision int64 `protobuf:"varint,11,opt,name=max_mod_revision,json=maxModRevision,proto3" json:"max_mod_revision,omitempty"`
+	// min_create_revision is the lower bound for returned key create revisions; all keys with
+	// lesser create trevisions will be filtered away.
+	MinCreateRevision int64 `protobuf:"varint,12,opt,name=min_create_revision,json=minCreateRevision,proto3" json:"min_create_revision,omitempty"`
+	// max_create_revision is the upper bound for returned key create revisions; all keys with
+	// greater create revisions will be filtered away.
+	MaxCreateRevision int64 `protobuf:"varint,13,opt,name=max_create_revision,json=maxCreateRevision,proto3" json:"max_create_revision,omitempty"`
 }
 
-func (m *RangeRequest) Reset()         { *m = RangeRequest{} }
-func (m *RangeRequest) String() string { return proto.CompactTextString(m) }
-func (*RangeRequest) ProtoMessage()    {}
+func (m *RangeRequest) Reset()                    { *m = RangeRequest{} }
+func (m *RangeRequest) String() string            { return proto.CompactTextString(m) }
+func (*RangeRequest) ProtoMessage()               {}
+func (*RangeRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{1} }
 
 type RangeResponse struct {
-	Header *ResponseHeader       `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	Kvs    []*storagepb.KeyValue `protobuf:"bytes,2,rep,name=kvs" json:"kvs,omitempty"`
+	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	// kvs is the list of key-value pairs matched by the range request.
+	// kvs is empty when count is requested.
+	Kvs []*mvccpb.KeyValue `protobuf:"bytes,2,rep,name=kvs" json:"kvs,omitempty"`
 	// more indicates if there are more keys to return in the requested range.
 	More bool `protobuf:"varint,3,opt,name=more,proto3" json:"more,omitempty"`
+	// count is set to the number of keys within the range when requested.
+	Count int64 `protobuf:"varint,4,opt,name=count,proto3" json:"count,omitempty"`
 }
 
-func (m *RangeResponse) Reset()         { *m = RangeResponse{} }
-func (m *RangeResponse) String() string { return proto.CompactTextString(m) }
-func (*RangeResponse) ProtoMessage()    {}
+func (m *RangeResponse) Reset()                    { *m = RangeResponse{} }
+func (m *RangeResponse) String() string            { return proto.CompactTextString(m) }
+func (*RangeResponse) ProtoMessage()               {}
+func (*RangeResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{2} }
 
 func (m *RangeResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -229,7 +293,7 @@ func (m *RangeResponse) GetHeader() *ResponseHeader {
 	return nil
 }
 
-func (m *RangeResponse) GetKvs() []*storagepb.KeyValue {
+func (m *RangeResponse) GetKvs() []*mvccpb.KeyValue {
 	if m != nil {
 		return m.Kvs
 	}
@@ -237,22 +301,33 @@ func (m *RangeResponse) GetKvs() []*storagepb.KeyValue {
 }
 
 type PutRequest struct {
-	Key   []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// key is the key, in bytes, to put into the key-value store.
+	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// value is the value, in bytes, to associate with the key in the key-value store.
 	Value []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-	Lease int64  `protobuf:"varint,3,opt,name=lease,proto3" json:"lease,omitempty"`
+	// lease is the lease ID to associate with the key in the key-value store. A lease
+	// value of 0 indicates no lease.
+	Lease int64 `protobuf:"varint,3,opt,name=lease,proto3" json:"lease,omitempty"`
+	// If prev_kv is set, etcd gets the previous key-value pair before changing it.
+	// The previous key-value pair will be returned in the put response.
+	PrevKv bool `protobuf:"varint,4,opt,name=prev_kv,json=prevKv,proto3" json:"prev_kv,omitempty"`
 }
 
-func (m *PutRequest) Reset()         { *m = PutRequest{} }
-func (m *PutRequest) String() string { return proto.CompactTextString(m) }
-func (*PutRequest) ProtoMessage()    {}
+func (m *PutRequest) Reset()                    { *m = PutRequest{} }
+func (m *PutRequest) String() string            { return proto.CompactTextString(m) }
+func (*PutRequest) ProtoMessage()               {}
+func (*PutRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{3} }
 
 type PutResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	// if prev_kv is set in the request, the previous key-value pair will be returned.
+	PrevKv *mvccpb.KeyValue `protobuf:"bytes,2,opt,name=prev_kv,json=prevKv" json:"prev_kv,omitempty"`
 }
 
-func (m *PutResponse) Reset()         { *m = PutResponse{} }
-func (m *PutResponse) String() string { return proto.CompactTextString(m) }
-func (*PutResponse) ProtoMessage()    {}
+func (m *PutResponse) Reset()                    { *m = PutResponse{} }
+func (m *PutResponse) String() string            { return proto.CompactTextString(m) }
+func (*PutResponse) ProtoMessage()               {}
+func (*PutResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{4} }
 
 func (m *PutResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -261,26 +336,42 @@ func (m *PutResponse) GetHeader() *ResponseHeader {
 	return nil
 }
 
-type DeleteRangeRequest struct {
-	// if the range_end is not given, the request deletes the key.
-	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	// if the range_end is given, it deletes the keys in range [key, range_end).
-	RangeEnd []byte `protobuf:"bytes,2,opt,name=range_end,proto3" json:"range_end,omitempty"`
+func (m *PutResponse) GetPrevKv() *mvccpb.KeyValue {
+	if m != nil {
+		return m.PrevKv
+	}
+	return nil
 }
 
-func (m *DeleteRangeRequest) Reset()         { *m = DeleteRangeRequest{} }
-func (m *DeleteRangeRequest) String() string { return proto.CompactTextString(m) }
-func (*DeleteRangeRequest) ProtoMessage()    {}
+type DeleteRangeRequest struct {
+	// key is the first key to delete in the range.
+	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// range_end is the key following the last key to delete for the range [key, range_end).
+	// If range_end is not given, the range is defined to contain only the key argument.
+	// If range_end is '\0', the range is all keys greater than or equal to the key argument.
+	RangeEnd []byte `protobuf:"bytes,2,opt,name=range_end,json=rangeEnd,proto3" json:"range_end,omitempty"`
+	// If prev_kv is set, etcd gets the previous key-value pairs before deleting it.
+	// The previous key-value pairs will be returned in the delte response.
+	PrevKv bool `protobuf:"varint,3,opt,name=prev_kv,json=prevKv,proto3" json:"prev_kv,omitempty"`
+}
+
+func (m *DeleteRangeRequest) Reset()                    { *m = DeleteRangeRequest{} }
+func (m *DeleteRangeRequest) String() string            { return proto.CompactTextString(m) }
+func (*DeleteRangeRequest) ProtoMessage()               {}
+func (*DeleteRangeRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{5} }
 
 type DeleteRangeResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	// Deleted is the number of keys that got deleted.
+	// deleted is the number of keys deleted by the delete range request.
 	Deleted int64 `protobuf:"varint,2,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	// if prev_kv is set in the request, the previous key-value pairs will be returned.
+	PrevKvs []*mvccpb.KeyValue `protobuf:"bytes,3,rep,name=prev_kvs,json=prevKvs" json:"prev_kvs,omitempty"`
 }
 
-func (m *DeleteRangeResponse) Reset()         { *m = DeleteRangeResponse{} }
-func (m *DeleteRangeResponse) String() string { return proto.CompactTextString(m) }
-func (*DeleteRangeResponse) ProtoMessage()    {}
+func (m *DeleteRangeResponse) Reset()                    { *m = DeleteRangeResponse{} }
+func (m *DeleteRangeResponse) String() string            { return proto.CompactTextString(m) }
+func (*DeleteRangeResponse) ProtoMessage()               {}
+func (*DeleteRangeResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{6} }
 
 func (m *DeleteRangeResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -289,103 +380,113 @@ func (m *DeleteRangeResponse) GetHeader() *ResponseHeader {
 	return nil
 }
 
-type RequestUnion struct {
-	// Types that are valid to be assigned to Request:
-	//	*RequestUnion_RequestRange
-	//	*RequestUnion_RequestPut
-	//	*RequestUnion_RequestDeleteRange
-	Request isRequestUnion_Request `protobuf_oneof:"request"`
+func (m *DeleteRangeResponse) GetPrevKvs() []*mvccpb.KeyValue {
+	if m != nil {
+		return m.PrevKvs
+	}
+	return nil
 }
 
-func (m *RequestUnion) Reset()         { *m = RequestUnion{} }
-func (m *RequestUnion) String() string { return proto.CompactTextString(m) }
-func (*RequestUnion) ProtoMessage()    {}
+type RequestOp struct {
+	// request is a union of request types accepted by a transaction.
+	//
+	// Types that are valid to be assigned to Request:
+	//	*RequestOp_RequestRange
+	//	*RequestOp_RequestPut
+	//	*RequestOp_RequestDeleteRange
+	Request isRequestOp_Request `protobuf_oneof:"request"`
+}
 
-type isRequestUnion_Request interface {
-	isRequestUnion_Request()
+func (m *RequestOp) Reset()                    { *m = RequestOp{} }
+func (m *RequestOp) String() string            { return proto.CompactTextString(m) }
+func (*RequestOp) ProtoMessage()               {}
+func (*RequestOp) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{7} }
+
+type isRequestOp_Request interface {
+	isRequestOp_Request()
 	MarshalTo([]byte) (int, error)
 	Size() int
 }
 
-type RequestUnion_RequestRange struct {
-	RequestRange *RangeRequest `protobuf:"bytes,1,opt,name=request_range,oneof"`
+type RequestOp_RequestRange struct {
+	RequestRange *RangeRequest `protobuf:"bytes,1,opt,name=request_range,json=requestRange,oneof"`
 }
-type RequestUnion_RequestPut struct {
-	RequestPut *PutRequest `protobuf:"bytes,2,opt,name=request_put,oneof"`
+type RequestOp_RequestPut struct {
+	RequestPut *PutRequest `protobuf:"bytes,2,opt,name=request_put,json=requestPut,oneof"`
 }
-type RequestUnion_RequestDeleteRange struct {
-	RequestDeleteRange *DeleteRangeRequest `protobuf:"bytes,3,opt,name=request_delete_range,oneof"`
+type RequestOp_RequestDeleteRange struct {
+	RequestDeleteRange *DeleteRangeRequest `protobuf:"bytes,3,opt,name=request_delete_range,json=requestDeleteRange,oneof"`
 }
 
-func (*RequestUnion_RequestRange) isRequestUnion_Request()       {}
-func (*RequestUnion_RequestPut) isRequestUnion_Request()         {}
-func (*RequestUnion_RequestDeleteRange) isRequestUnion_Request() {}
+func (*RequestOp_RequestRange) isRequestOp_Request()       {}
+func (*RequestOp_RequestPut) isRequestOp_Request()         {}
+func (*RequestOp_RequestDeleteRange) isRequestOp_Request() {}
 
-func (m *RequestUnion) GetRequest() isRequestUnion_Request {
+func (m *RequestOp) GetRequest() isRequestOp_Request {
 	if m != nil {
 		return m.Request
 	}
 	return nil
 }
 
-func (m *RequestUnion) GetRequestRange() *RangeRequest {
-	if x, ok := m.GetRequest().(*RequestUnion_RequestRange); ok {
+func (m *RequestOp) GetRequestRange() *RangeRequest {
+	if x, ok := m.GetRequest().(*RequestOp_RequestRange); ok {
 		return x.RequestRange
 	}
 	return nil
 }
 
-func (m *RequestUnion) GetRequestPut() *PutRequest {
-	if x, ok := m.GetRequest().(*RequestUnion_RequestPut); ok {
+func (m *RequestOp) GetRequestPut() *PutRequest {
+	if x, ok := m.GetRequest().(*RequestOp_RequestPut); ok {
 		return x.RequestPut
 	}
 	return nil
 }
 
-func (m *RequestUnion) GetRequestDeleteRange() *DeleteRangeRequest {
-	if x, ok := m.GetRequest().(*RequestUnion_RequestDeleteRange); ok {
+func (m *RequestOp) GetRequestDeleteRange() *DeleteRangeRequest {
+	if x, ok := m.GetRequest().(*RequestOp_RequestDeleteRange); ok {
 		return x.RequestDeleteRange
 	}
 	return nil
 }
 
 // XXX_OneofFuncs is for the internal use of the proto package.
-func (*RequestUnion) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), []interface{}) {
-	return _RequestUnion_OneofMarshaler, _RequestUnion_OneofUnmarshaler, []interface{}{
-		(*RequestUnion_RequestRange)(nil),
-		(*RequestUnion_RequestPut)(nil),
-		(*RequestUnion_RequestDeleteRange)(nil),
+func (*RequestOp) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _RequestOp_OneofMarshaler, _RequestOp_OneofUnmarshaler, _RequestOp_OneofSizer, []interface{}{
+		(*RequestOp_RequestRange)(nil),
+		(*RequestOp_RequestPut)(nil),
+		(*RequestOp_RequestDeleteRange)(nil),
 	}
 }
 
-func _RequestUnion_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
-	m := msg.(*RequestUnion)
+func _RequestOp_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*RequestOp)
 	// request
 	switch x := m.Request.(type) {
-	case *RequestUnion_RequestRange:
+	case *RequestOp_RequestRange:
 		_ = b.EncodeVarint(1<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.RequestRange); err != nil {
 			return err
 		}
-	case *RequestUnion_RequestPut:
+	case *RequestOp_RequestPut:
 		_ = b.EncodeVarint(2<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.RequestPut); err != nil {
 			return err
 		}
-	case *RequestUnion_RequestDeleteRange:
+	case *RequestOp_RequestDeleteRange:
 		_ = b.EncodeVarint(3<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.RequestDeleteRange); err != nil {
 			return err
 		}
 	case nil:
 	default:
-		return fmt.Errorf("RequestUnion.Request has unexpected type %T", x)
+		return fmt.Errorf("RequestOp.Request has unexpected type %T", x)
 	}
 	return nil
 }
 
-func _RequestUnion_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
-	m := msg.(*RequestUnion)
+func _RequestOp_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*RequestOp)
 	switch tag {
 	case 1: // request.request_range
 		if wire != proto.WireBytes {
@@ -393,7 +494,7 @@ func _RequestUnion_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.B
 		}
 		msg := new(RangeRequest)
 		err := b.DecodeMessage(msg)
-		m.Request = &RequestUnion_RequestRange{msg}
+		m.Request = &RequestOp_RequestRange{msg}
 		return true, err
 	case 2: // request.request_put
 		if wire != proto.WireBytes {
@@ -401,7 +502,7 @@ func _RequestUnion_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.B
 		}
 		msg := new(PutRequest)
 		err := b.DecodeMessage(msg)
-		m.Request = &RequestUnion_RequestPut{msg}
+		m.Request = &RequestOp_RequestPut{msg}
 		return true, err
 	case 3: // request.request_delete_range
 		if wire != proto.WireBytes {
@@ -409,110 +510,139 @@ func _RequestUnion_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.B
 		}
 		msg := new(DeleteRangeRequest)
 		err := b.DecodeMessage(msg)
-		m.Request = &RequestUnion_RequestDeleteRange{msg}
+		m.Request = &RequestOp_RequestDeleteRange{msg}
 		return true, err
 	default:
 		return false, nil
 	}
 }
 
-type ResponseUnion struct {
-	// Types that are valid to be assigned to Response:
-	//	*ResponseUnion_ResponseRange
-	//	*ResponseUnion_ResponsePut
-	//	*ResponseUnion_ResponseDeleteRange
-	Response isResponseUnion_Response `protobuf_oneof:"response"`
+func _RequestOp_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*RequestOp)
+	// request
+	switch x := m.Request.(type) {
+	case *RequestOp_RequestRange:
+		s := proto.Size(x.RequestRange)
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *RequestOp_RequestPut:
+		s := proto.Size(x.RequestPut)
+		n += proto.SizeVarint(2<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *RequestOp_RequestDeleteRange:
+		s := proto.Size(x.RequestDeleteRange)
+		n += proto.SizeVarint(3<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
 }
 
-func (m *ResponseUnion) Reset()         { *m = ResponseUnion{} }
-func (m *ResponseUnion) String() string { return proto.CompactTextString(m) }
-func (*ResponseUnion) ProtoMessage()    {}
+type ResponseOp struct {
+	// response is a union of response types returned by a transaction.
+	//
+	// Types that are valid to be assigned to Response:
+	//	*ResponseOp_ResponseRange
+	//	*ResponseOp_ResponsePut
+	//	*ResponseOp_ResponseDeleteRange
+	Response isResponseOp_Response `protobuf_oneof:"response"`
+}
 
-type isResponseUnion_Response interface {
-	isResponseUnion_Response()
+func (m *ResponseOp) Reset()                    { *m = ResponseOp{} }
+func (m *ResponseOp) String() string            { return proto.CompactTextString(m) }
+func (*ResponseOp) ProtoMessage()               {}
+func (*ResponseOp) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{8} }
+
+type isResponseOp_Response interface {
+	isResponseOp_Response()
 	MarshalTo([]byte) (int, error)
 	Size() int
 }
 
-type ResponseUnion_ResponseRange struct {
-	ResponseRange *RangeResponse `protobuf:"bytes,1,opt,name=response_range,oneof"`
+type ResponseOp_ResponseRange struct {
+	ResponseRange *RangeResponse `protobuf:"bytes,1,opt,name=response_range,json=responseRange,oneof"`
 }
-type ResponseUnion_ResponsePut struct {
-	ResponsePut *PutResponse `protobuf:"bytes,2,opt,name=response_put,oneof"`
+type ResponseOp_ResponsePut struct {
+	ResponsePut *PutResponse `protobuf:"bytes,2,opt,name=response_put,json=responsePut,oneof"`
 }
-type ResponseUnion_ResponseDeleteRange struct {
-	ResponseDeleteRange *DeleteRangeResponse `protobuf:"bytes,3,opt,name=response_delete_range,oneof"`
+type ResponseOp_ResponseDeleteRange struct {
+	ResponseDeleteRange *DeleteRangeResponse `protobuf:"bytes,3,opt,name=response_delete_range,json=responseDeleteRange,oneof"`
 }
 
-func (*ResponseUnion_ResponseRange) isResponseUnion_Response()       {}
-func (*ResponseUnion_ResponsePut) isResponseUnion_Response()         {}
-func (*ResponseUnion_ResponseDeleteRange) isResponseUnion_Response() {}
+func (*ResponseOp_ResponseRange) isResponseOp_Response()       {}
+func (*ResponseOp_ResponsePut) isResponseOp_Response()         {}
+func (*ResponseOp_ResponseDeleteRange) isResponseOp_Response() {}
 
-func (m *ResponseUnion) GetResponse() isResponseUnion_Response {
+func (m *ResponseOp) GetResponse() isResponseOp_Response {
 	if m != nil {
 		return m.Response
 	}
 	return nil
 }
 
-func (m *ResponseUnion) GetResponseRange() *RangeResponse {
-	if x, ok := m.GetResponse().(*ResponseUnion_ResponseRange); ok {
+func (m *ResponseOp) GetResponseRange() *RangeResponse {
+	if x, ok := m.GetResponse().(*ResponseOp_ResponseRange); ok {
 		return x.ResponseRange
 	}
 	return nil
 }
 
-func (m *ResponseUnion) GetResponsePut() *PutResponse {
-	if x, ok := m.GetResponse().(*ResponseUnion_ResponsePut); ok {
+func (m *ResponseOp) GetResponsePut() *PutResponse {
+	if x, ok := m.GetResponse().(*ResponseOp_ResponsePut); ok {
 		return x.ResponsePut
 	}
 	return nil
 }
 
-func (m *ResponseUnion) GetResponseDeleteRange() *DeleteRangeResponse {
-	if x, ok := m.GetResponse().(*ResponseUnion_ResponseDeleteRange); ok {
+func (m *ResponseOp) GetResponseDeleteRange() *DeleteRangeResponse {
+	if x, ok := m.GetResponse().(*ResponseOp_ResponseDeleteRange); ok {
 		return x.ResponseDeleteRange
 	}
 	return nil
 }
 
 // XXX_OneofFuncs is for the internal use of the proto package.
-func (*ResponseUnion) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), []interface{}) {
-	return _ResponseUnion_OneofMarshaler, _ResponseUnion_OneofUnmarshaler, []interface{}{
-		(*ResponseUnion_ResponseRange)(nil),
-		(*ResponseUnion_ResponsePut)(nil),
-		(*ResponseUnion_ResponseDeleteRange)(nil),
+func (*ResponseOp) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _ResponseOp_OneofMarshaler, _ResponseOp_OneofUnmarshaler, _ResponseOp_OneofSizer, []interface{}{
+		(*ResponseOp_ResponseRange)(nil),
+		(*ResponseOp_ResponsePut)(nil),
+		(*ResponseOp_ResponseDeleteRange)(nil),
 	}
 }
 
-func _ResponseUnion_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
-	m := msg.(*ResponseUnion)
+func _ResponseOp_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*ResponseOp)
 	// response
 	switch x := m.Response.(type) {
-	case *ResponseUnion_ResponseRange:
+	case *ResponseOp_ResponseRange:
 		_ = b.EncodeVarint(1<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.ResponseRange); err != nil {
 			return err
 		}
-	case *ResponseUnion_ResponsePut:
+	case *ResponseOp_ResponsePut:
 		_ = b.EncodeVarint(2<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.ResponsePut); err != nil {
 			return err
 		}
-	case *ResponseUnion_ResponseDeleteRange:
+	case *ResponseOp_ResponseDeleteRange:
 		_ = b.EncodeVarint(3<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.ResponseDeleteRange); err != nil {
 			return err
 		}
 	case nil:
 	default:
-		return fmt.Errorf("ResponseUnion.Response has unexpected type %T", x)
+		return fmt.Errorf("ResponseOp.Response has unexpected type %T", x)
 	}
 	return nil
 }
 
-func _ResponseUnion_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
-	m := msg.(*ResponseUnion)
+func _ResponseOp_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*ResponseOp)
 	switch tag {
 	case 1: // response.response_range
 		if wire != proto.WireBytes {
@@ -520,7 +650,7 @@ func _ResponseUnion_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.
 		}
 		msg := new(RangeResponse)
 		err := b.DecodeMessage(msg)
-		m.Response = &ResponseUnion_ResponseRange{msg}
+		m.Response = &ResponseOp_ResponseRange{msg}
 		return true, err
 	case 2: // response.response_put
 		if wire != proto.WireBytes {
@@ -528,7 +658,7 @@ func _ResponseUnion_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.
 		}
 		msg := new(PutResponse)
 		err := b.DecodeMessage(msg)
-		m.Response = &ResponseUnion_ResponsePut{msg}
+		m.Response = &ResponseOp_ResponsePut{msg}
 		return true, err
 	case 3: // response.response_delete_range
 		if wire != proto.WireBytes {
@@ -536,17 +666,45 @@ func _ResponseUnion_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.
 		}
 		msg := new(DeleteRangeResponse)
 		err := b.DecodeMessage(msg)
-		m.Response = &ResponseUnion_ResponseDeleteRange{msg}
+		m.Response = &ResponseOp_ResponseDeleteRange{msg}
 		return true, err
 	default:
 		return false, nil
 	}
 }
 
+func _ResponseOp_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*ResponseOp)
+	// response
+	switch x := m.Response.(type) {
+	case *ResponseOp_ResponseRange:
+		s := proto.Size(x.ResponseRange)
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *ResponseOp_ResponsePut:
+		s := proto.Size(x.ResponsePut)
+		n += proto.SizeVarint(2<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *ResponseOp_ResponseDeleteRange:
+		s := proto.Size(x.ResponseDeleteRange)
+		n += proto.SizeVarint(3<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
 type Compare struct {
+	// result is logical comparison operation for this comparison.
 	Result Compare_CompareResult `protobuf:"varint,1,opt,name=result,proto3,enum=etcdserverpb.Compare_CompareResult" json:"result,omitempty"`
+	// target is the key-value field to inspect for the comparison.
 	Target Compare_CompareTarget `protobuf:"varint,2,opt,name=target,proto3,enum=etcdserverpb.Compare_CompareTarget" json:"target,omitempty"`
-	// key path
+	// key is the subject key for the comparison operation.
 	Key []byte `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
 	// Types that are valid to be assigned to TargetUnion:
 	//	*Compare_Version
@@ -556,9 +714,10 @@ type Compare struct {
 	TargetUnion isCompare_TargetUnion `protobuf_oneof:"target_union"`
 }
 
-func (m *Compare) Reset()         { *m = Compare{} }
-func (m *Compare) String() string { return proto.CompactTextString(m) }
-func (*Compare) ProtoMessage()    {}
+func (m *Compare) Reset()                    { *m = Compare{} }
+func (m *Compare) String() string            { return proto.CompactTextString(m) }
+func (*Compare) ProtoMessage()               {}
+func (*Compare) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{9} }
 
 type isCompare_TargetUnion interface {
 	isCompare_TargetUnion()
@@ -570,10 +729,10 @@ type Compare_Version struct {
 	Version int64 `protobuf:"varint,4,opt,name=version,proto3,oneof"`
 }
 type Compare_CreateRevision struct {
-	CreateRevision int64 `protobuf:"varint,5,opt,name=create_revision,proto3,oneof"`
+	CreateRevision int64 `protobuf:"varint,5,opt,name=create_revision,json=createRevision,proto3,oneof"`
 }
 type Compare_ModRevision struct {
-	ModRevision int64 `protobuf:"varint,6,opt,name=mod_revision,proto3,oneof"`
+	ModRevision int64 `protobuf:"varint,6,opt,name=mod_revision,json=modRevision,proto3,oneof"`
 }
 type Compare_Value struct {
 	Value []byte `protobuf:"bytes,7,opt,name=value,proto3,oneof"`
@@ -620,8 +779,8 @@ func (m *Compare) GetValue() []byte {
 }
 
 // XXX_OneofFuncs is for the internal use of the proto package.
-func (*Compare) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), []interface{}) {
-	return _Compare_OneofMarshaler, _Compare_OneofUnmarshaler, []interface{}{
+func (*Compare) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _Compare_OneofMarshaler, _Compare_OneofUnmarshaler, _Compare_OneofSizer, []interface{}{
 		(*Compare_Version)(nil),
 		(*Compare_CreateRevision)(nil),
 		(*Compare_ModRevision)(nil),
@@ -688,6 +847,30 @@ func _Compare_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer
 	}
 }
 
+func _Compare_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*Compare)
+	// target_union
+	switch x := m.TargetUnion.(type) {
+	case *Compare_Version:
+		n += proto.SizeVarint(4<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.Version))
+	case *Compare_CreateRevision:
+		n += proto.SizeVarint(5<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.CreateRevision))
+	case *Compare_ModRevision:
+		n += proto.SizeVarint(6<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.ModRevision))
+	case *Compare_Value:
+		n += proto.SizeVarint(7<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.Value)))
+		n += len(x.Value)
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
 // From google paxosdb paper:
 // Our implementation hinges around a powerful primitive which we call MultiOp. All other database
 // operations except for iteration are implemented as a single call to MultiOp. A MultiOp is applied atomically
@@ -704,14 +887,22 @@ func _Compare_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer
 // true.
 // 3. A list of database operations called f op. Like t op, but executed if guard evaluates to false.
 type TxnRequest struct {
-	Compare []*Compare      `protobuf:"bytes,1,rep,name=compare" json:"compare,omitempty"`
-	Success []*RequestUnion `protobuf:"bytes,2,rep,name=success" json:"success,omitempty"`
-	Failure []*RequestUnion `protobuf:"bytes,3,rep,name=failure" json:"failure,omitempty"`
+	// compare is a list of predicates representing a conjunction of terms.
+	// If the comparisons succeed, then the success requests will be processed in order,
+	// and the response will contain their respective responses in order.
+	// If the comparisons fail, then the failure requests will be processed in order,
+	// and the response will contain their respective responses in order.
+	Compare []*Compare `protobuf:"bytes,1,rep,name=compare" json:"compare,omitempty"`
+	// success is a list of requests which will be applied when compare evaluates to true.
+	Success []*RequestOp `protobuf:"bytes,2,rep,name=success" json:"success,omitempty"`
+	// failure is a list of requests which will be applied when compare evaluates to false.
+	Failure []*RequestOp `protobuf:"bytes,3,rep,name=failure" json:"failure,omitempty"`
 }
 
-func (m *TxnRequest) Reset()         { *m = TxnRequest{} }
-func (m *TxnRequest) String() string { return proto.CompactTextString(m) }
-func (*TxnRequest) ProtoMessage()    {}
+func (m *TxnRequest) Reset()                    { *m = TxnRequest{} }
+func (m *TxnRequest) String() string            { return proto.CompactTextString(m) }
+func (*TxnRequest) ProtoMessage()               {}
+func (*TxnRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{10} }
 
 func (m *TxnRequest) GetCompare() []*Compare {
 	if m != nil {
@@ -720,14 +911,14 @@ func (m *TxnRequest) GetCompare() []*Compare {
 	return nil
 }
 
-func (m *TxnRequest) GetSuccess() []*RequestUnion {
+func (m *TxnRequest) GetSuccess() []*RequestOp {
 	if m != nil {
 		return m.Success
 	}
 	return nil
 }
 
-func (m *TxnRequest) GetFailure() []*RequestUnion {
+func (m *TxnRequest) GetFailure() []*RequestOp {
 	if m != nil {
 		return m.Failure
 	}
@@ -735,14 +926,18 @@ func (m *TxnRequest) GetFailure() []*RequestUnion {
 }
 
 type TxnResponse struct {
-	Header    *ResponseHeader  `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	Succeeded bool             `protobuf:"varint,2,opt,name=succeeded,proto3" json:"succeeded,omitempty"`
-	Responses []*ResponseUnion `protobuf:"bytes,3,rep,name=responses" json:"responses,omitempty"`
+	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	// succeeded is set to true if the compare evaluated to true or false otherwise.
+	Succeeded bool `protobuf:"varint,2,opt,name=succeeded,proto3" json:"succeeded,omitempty"`
+	// responses is a list of responses corresponding to the results from applying
+	// success if succeeded is true or failure if succeeded is false.
+	Responses []*ResponseOp `protobuf:"bytes,3,rep,name=responses" json:"responses,omitempty"`
 }
 
-func (m *TxnResponse) Reset()         { *m = TxnResponse{} }
-func (m *TxnResponse) String() string { return proto.CompactTextString(m) }
-func (*TxnResponse) ProtoMessage()    {}
+func (m *TxnResponse) Reset()                    { *m = TxnResponse{} }
+func (m *TxnResponse) String() string            { return proto.CompactTextString(m) }
+func (*TxnResponse) ProtoMessage()               {}
+func (*TxnResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{11} }
 
 func (m *TxnResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -751,36 +946,37 @@ func (m *TxnResponse) GetHeader() *ResponseHeader {
 	return nil
 }
 
-func (m *TxnResponse) GetResponses() []*ResponseUnion {
+func (m *TxnResponse) GetResponses() []*ResponseOp {
 	if m != nil {
 		return m.Responses
 	}
 	return nil
 }
 
-// Compaction compacts the kv store upto the given revision (including).
-// It removes the old versions of a key. It keeps the newest version of
-// the key even if its latest modification revision is smaller than the given
-// revision.
+// CompactionRequest compacts the key-value store up to a given revision. All superseded keys
+// with a revision less than the compaction revision will be removed.
 type CompactionRequest struct {
+	// revision is the key-value store revision for the compaction operation.
 	Revision int64 `protobuf:"varint,1,opt,name=revision,proto3" json:"revision,omitempty"`
 	// physical is set so the RPC will wait until the compaction is physically
 	// applied to the local database such that compacted entries are totally
-	// removed from the backing store.
+	// removed from the backend database.
 	Physical bool `protobuf:"varint,2,opt,name=physical,proto3" json:"physical,omitempty"`
 }
 
-func (m *CompactionRequest) Reset()         { *m = CompactionRequest{} }
-func (m *CompactionRequest) String() string { return proto.CompactTextString(m) }
-func (*CompactionRequest) ProtoMessage()    {}
+func (m *CompactionRequest) Reset()                    { *m = CompactionRequest{} }
+func (m *CompactionRequest) String() string            { return proto.CompactTextString(m) }
+func (*CompactionRequest) ProtoMessage()               {}
+func (*CompactionRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{12} }
 
 type CompactionResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *CompactionResponse) Reset()         { *m = CompactionResponse{} }
-func (m *CompactionResponse) String() string { return proto.CompactTextString(m) }
-func (*CompactionResponse) ProtoMessage()    {}
+func (m *CompactionResponse) Reset()                    { *m = CompactionResponse{} }
+func (m *CompactionResponse) String() string            { return proto.CompactTextString(m) }
+func (*CompactionResponse) ProtoMessage()               {}
+func (*CompactionResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{13} }
 
 func (m *CompactionResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -792,18 +988,21 @@ func (m *CompactionResponse) GetHeader() *ResponseHeader {
 type HashRequest struct {
 }
 
-func (m *HashRequest) Reset()         { *m = HashRequest{} }
-func (m *HashRequest) String() string { return proto.CompactTextString(m) }
-func (*HashRequest) ProtoMessage()    {}
+func (m *HashRequest) Reset()                    { *m = HashRequest{} }
+func (m *HashRequest) String() string            { return proto.CompactTextString(m) }
+func (*HashRequest) ProtoMessage()               {}
+func (*HashRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{14} }
 
 type HashResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	Hash   uint32          `protobuf:"varint,2,opt,name=hash,proto3" json:"hash,omitempty"`
+	// hash is the hash value computed from the responding member's key-value store.
+	Hash uint32 `protobuf:"varint,2,opt,name=hash,proto3" json:"hash,omitempty"`
 }
 
-func (m *HashResponse) Reset()         { *m = HashResponse{} }
-func (m *HashResponse) String() string { return proto.CompactTextString(m) }
-func (*HashResponse) ProtoMessage()    {}
+func (m *HashResponse) Reset()                    { *m = HashResponse{} }
+func (m *HashResponse) String() string            { return proto.CompactTextString(m) }
+func (*HashResponse) ProtoMessage()               {}
+func (*HashResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{15} }
 
 func (m *HashResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -812,16 +1011,49 @@ func (m *HashResponse) GetHeader() *ResponseHeader {
 	return nil
 }
 
+type SnapshotRequest struct {
+}
+
+func (m *SnapshotRequest) Reset()                    { *m = SnapshotRequest{} }
+func (m *SnapshotRequest) String() string            { return proto.CompactTextString(m) }
+func (*SnapshotRequest) ProtoMessage()               {}
+func (*SnapshotRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{16} }
+
+type SnapshotResponse struct {
+	// header has the current key-value store information. The first header in the snapshot
+	// stream indicates the point in time of the snapshot.
+	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	// remaining_bytes is the number of blob bytes to be sent after this message
+	RemainingBytes uint64 `protobuf:"varint,2,opt,name=remaining_bytes,json=remainingBytes,proto3" json:"remaining_bytes,omitempty"`
+	// blob contains the next chunk of the snapshot in the snapshot stream.
+	Blob []byte `protobuf:"bytes,3,opt,name=blob,proto3" json:"blob,omitempty"`
+}
+
+func (m *SnapshotResponse) Reset()                    { *m = SnapshotResponse{} }
+func (m *SnapshotResponse) String() string            { return proto.CompactTextString(m) }
+func (*SnapshotResponse) ProtoMessage()               {}
+func (*SnapshotResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{17} }
+
+func (m *SnapshotResponse) GetHeader() *ResponseHeader {
+	if m != nil {
+		return m.Header
+	}
+	return nil
+}
+
 type WatchRequest struct {
+	// request_union is a request to either create a new watcher or cancel an existing watcher.
+	//
 	// Types that are valid to be assigned to RequestUnion:
 	//	*WatchRequest_CreateRequest
 	//	*WatchRequest_CancelRequest
 	RequestUnion isWatchRequest_RequestUnion `protobuf_oneof:"request_union"`
 }
 
-func (m *WatchRequest) Reset()         { *m = WatchRequest{} }
-func (m *WatchRequest) String() string { return proto.CompactTextString(m) }
-func (*WatchRequest) ProtoMessage()    {}
+func (m *WatchRequest) Reset()                    { *m = WatchRequest{} }
+func (m *WatchRequest) String() string            { return proto.CompactTextString(m) }
+func (*WatchRequest) ProtoMessage()               {}
+func (*WatchRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{18} }
 
 type isWatchRequest_RequestUnion interface {
 	isWatchRequest_RequestUnion()
@@ -830,10 +1062,10 @@ type isWatchRequest_RequestUnion interface {
 }
 
 type WatchRequest_CreateRequest struct {
-	CreateRequest *WatchCreateRequest `protobuf:"bytes,1,opt,name=create_request,oneof"`
+	CreateRequest *WatchCreateRequest `protobuf:"bytes,1,opt,name=create_request,json=createRequest,oneof"`
 }
 type WatchRequest_CancelRequest struct {
-	CancelRequest *WatchCancelRequest `protobuf:"bytes,2,opt,name=cancel_request,oneof"`
+	CancelRequest *WatchCancelRequest `protobuf:"bytes,2,opt,name=cancel_request,json=cancelRequest,oneof"`
 }
 
 func (*WatchRequest_CreateRequest) isWatchRequest_RequestUnion() {}
@@ -861,8 +1093,8 @@ func (m *WatchRequest) GetCancelRequest() *WatchCancelRequest {
 }
 
 // XXX_OneofFuncs is for the internal use of the proto package.
-func (*WatchRequest) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), []interface{}) {
-	return _WatchRequest_OneofMarshaler, _WatchRequest_OneofUnmarshaler, []interface{}{
+func (*WatchRequest) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _WatchRequest_OneofMarshaler, _WatchRequest_OneofUnmarshaler, _WatchRequest_OneofSizer, []interface{}{
 		(*WatchRequest_CreateRequest)(nil),
 		(*WatchRequest_CancelRequest)(nil),
 	}
@@ -913,60 +1145,93 @@ func _WatchRequest_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.B
 	}
 }
 
-type WatchCreateRequest struct {
-	// the key to be watched
-	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	// if the range_end is given, keys in [key, range_end) are watched
-	// NOTE: only range_end == prefixEnd(key) is accepted now
-	RangeEnd []byte `protobuf:"bytes,2,opt,name=range_end,proto3" json:"range_end,omitempty"`
-	// start_revision is an optional revision (including) to watch from. No start_revision is "now".
-	StartRevision int64 `protobuf:"varint,3,opt,name=start_revision,proto3" json:"start_revision,omitempty"`
-	// if progress_notify is set, etcd server sends WatchResponse with empty events to the
-	// created watcher when there are no recent events. It is useful when clients want always to be
-	// able to recover a disconnected watcher from a recent known revision.
-	// etcdsever can decide how long it should send a notification based on current load.
-	ProgressNotify bool `protobuf:"varint,4,opt,name=progress_notify,proto3" json:"progress_notify,omitempty"`
+func _WatchRequest_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*WatchRequest)
+	// request_union
+	switch x := m.RequestUnion.(type) {
+	case *WatchRequest_CreateRequest:
+		s := proto.Size(x.CreateRequest)
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *WatchRequest_CancelRequest:
+		s := proto.Size(x.CancelRequest)
+		n += proto.SizeVarint(2<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
 }
 
-func (m *WatchCreateRequest) Reset()         { *m = WatchCreateRequest{} }
-func (m *WatchCreateRequest) String() string { return proto.CompactTextString(m) }
-func (*WatchCreateRequest) ProtoMessage()    {}
+type WatchCreateRequest struct {
+	// key is the key to register for watching.
+	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// range_end is the end of the range [key, range_end) to watch. If range_end is not given,
+	// only the key argument is watched. If range_end is equal to '\0', all keys greater than
+	// or equal to the key argument are watched.
+	// If the range_end is one bit larger than the given key,
+	// then all keys with the prefix (the given key) will be watched.
+	RangeEnd []byte `protobuf:"bytes,2,opt,name=range_end,json=rangeEnd,proto3" json:"range_end,omitempty"`
+	// start_revision is an optional revision to watch from (inclusive). No start_revision is "now".
+	StartRevision int64 `protobuf:"varint,3,opt,name=start_revision,json=startRevision,proto3" json:"start_revision,omitempty"`
+	// progress_notify is set so that the etcd server will periodically send a WatchResponse with
+	// no events to the new watcher if there are no recent events. It is useful when clients
+	// wish to recover a disconnected watcher starting from a recent known revision.
+	// The etcd server may decide how often it will send notifications based on current load.
+	ProgressNotify bool `protobuf:"varint,4,opt,name=progress_notify,json=progressNotify,proto3" json:"progress_notify,omitempty"`
+	// filters filter the events at server side before it sends back to the watcher.
+	Filters []WatchCreateRequest_FilterType `protobuf:"varint,5,rep,name=filters,enum=etcdserverpb.WatchCreateRequest_FilterType" json:"filters,omitempty"`
+	// If prev_kv is set, created watcher gets the previous KV before the event happens.
+	// If the previous KV is already compacted, nothing will be returned.
+	PrevKv bool `protobuf:"varint,6,opt,name=prev_kv,json=prevKv,proto3" json:"prev_kv,omitempty"`
+}
+
+func (m *WatchCreateRequest) Reset()                    { *m = WatchCreateRequest{} }
+func (m *WatchCreateRequest) String() string            { return proto.CompactTextString(m) }
+func (*WatchCreateRequest) ProtoMessage()               {}
+func (*WatchCreateRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{19} }
 
 type WatchCancelRequest struct {
-	WatchId int64 `protobuf:"varint,1,opt,name=watch_id,proto3" json:"watch_id,omitempty"`
+	// watch_id is the watcher id to cancel so that no more events are transmitted.
+	WatchId int64 `protobuf:"varint,1,opt,name=watch_id,json=watchId,proto3" json:"watch_id,omitempty"`
 }
 
-func (m *WatchCancelRequest) Reset()         { *m = WatchCancelRequest{} }
-func (m *WatchCancelRequest) String() string { return proto.CompactTextString(m) }
-func (*WatchCancelRequest) ProtoMessage()    {}
+func (m *WatchCancelRequest) Reset()                    { *m = WatchCancelRequest{} }
+func (m *WatchCancelRequest) String() string            { return proto.CompactTextString(m) }
+func (*WatchCancelRequest) ProtoMessage()               {}
+func (*WatchCancelRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{20} }
 
 type WatchResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	// watch_id is the ID of the watching the response sent to.
-	WatchId int64 `protobuf:"varint,2,opt,name=watch_id,proto3" json:"watch_id,omitempty"`
-	// If the response is for a create watch request, created is set to true.
-	// Client should record the watch_id and prepare for receiving events for
-	// that watching from the same stream.
-	// All events sent to the created watching will attach with the same watch_id.
+	// watch_id is the ID of the watcher that corresponds to the response.
+	WatchId int64 `protobuf:"varint,2,opt,name=watch_id,json=watchId,proto3" json:"watch_id,omitempty"`
+	// created is set to true if the response is for a create watch request.
+	// The client should record the watch_id and expect to receive events for
+	// the created watcher from the same stream.
+	// All events sent to the created watcher will attach with the same watch_id.
 	Created bool `protobuf:"varint,3,opt,name=created,proto3" json:"created,omitempty"`
-	// If the response is for a cancel watch request, cancel is set to true.
-	// No further events will be sent to the canceled watching.
+	// canceled is set to true if the response is for a cancel watch request.
+	// No further events will be sent to the canceled watcher.
 	Canceled bool `protobuf:"varint,4,opt,name=canceled,proto3" json:"canceled,omitempty"`
-	// CompactRevision is set to the minimum index if a watching tries to watch
+	// compact_revision is set to the minimum index if a watcher tries to watch
 	// at a compacted index.
 	//
-	// This happens when creating a watching at a compacted revision or the watching cannot
-	// catch up with the progress of the KV.
+	// This happens when creating a watcher at a compacted revision or the watcher cannot
+	// catch up with the progress of the key-value store.
 	//
-	// Client should treat the watching as canceled and should not try to create any
-	// watching with same start_revision again.
-	CompactRevision int64              `protobuf:"varint,5,opt,name=compact_revision,proto3" json:"compact_revision,omitempty"`
-	Events          []*storagepb.Event `protobuf:"bytes,11,rep,name=events" json:"events,omitempty"`
+	// The client should treat the watcher as canceled and should not try to create any
+	// watcher with the same start_revision again.
+	CompactRevision int64           `protobuf:"varint,5,opt,name=compact_revision,json=compactRevision,proto3" json:"compact_revision,omitempty"`
+	Events          []*mvccpb.Event `protobuf:"bytes,11,rep,name=events" json:"events,omitempty"`
 }
 
-func (m *WatchResponse) Reset()         { *m = WatchResponse{} }
-func (m *WatchResponse) String() string { return proto.CompactTextString(m) }
-func (*WatchResponse) ProtoMessage()    {}
+func (m *WatchResponse) Reset()                    { *m = WatchResponse{} }
+func (m *WatchResponse) String() string            { return proto.CompactTextString(m) }
+func (*WatchResponse) ProtoMessage()               {}
+func (*WatchResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{21} }
 
 func (m *WatchResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -975,7 +1240,7 @@ func (m *WatchResponse) GetHeader() *ResponseHeader {
 	return nil
 }
 
-func (m *WatchResponse) GetEvents() []*storagepb.Event {
+func (m *WatchResponse) GetEvents() []*mvccpb.Event {
 	if m != nil {
 		return m.Events
 	}
@@ -983,27 +1248,30 @@ func (m *WatchResponse) GetEvents() []*storagepb.Event {
 }
 
 type LeaseGrantRequest struct {
-	// advisory ttl in seconds
-	TTL int64 `protobuf:"varint,1,opt,name=TTL,proto3" json:"TTL,omitempty"`
-	// requested ID to create; 0 lets lessor choose
-	ID int64 `protobuf:"varint,2,opt,name=ID,proto3" json:"ID,omitempty"`
+	// TTL is the advisory time-to-live in seconds.
+	TTL int64 `protobuf:"varint,1,opt,name=TTL,json=tTL,proto3" json:"TTL,omitempty"`
+	// ID is the requested ID for the lease. If ID is set to 0, the lessor chooses an ID.
+	ID int64 `protobuf:"varint,2,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
 }
 
-func (m *LeaseGrantRequest) Reset()         { *m = LeaseGrantRequest{} }
-func (m *LeaseGrantRequest) String() string { return proto.CompactTextString(m) }
-func (*LeaseGrantRequest) ProtoMessage()    {}
+func (m *LeaseGrantRequest) Reset()                    { *m = LeaseGrantRequest{} }
+func (m *LeaseGrantRequest) String() string            { return proto.CompactTextString(m) }
+func (*LeaseGrantRequest) ProtoMessage()               {}
+func (*LeaseGrantRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{22} }
 
 type LeaseGrantResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	ID     int64           `protobuf:"varint,2,opt,name=ID,proto3" json:"ID,omitempty"`
-	// server decided ttl in second
-	TTL   int64  `protobuf:"varint,3,opt,name=TTL,proto3" json:"TTL,omitempty"`
+	// ID is the lease ID for the granted lease.
+	ID int64 `protobuf:"varint,2,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
+	// TTL is the server chosen lease time-to-live in seconds.
+	TTL   int64  `protobuf:"varint,3,opt,name=TTL,json=tTL,proto3" json:"TTL,omitempty"`
 	Error string `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
 }
 
-func (m *LeaseGrantResponse) Reset()         { *m = LeaseGrantResponse{} }
-func (m *LeaseGrantResponse) String() string { return proto.CompactTextString(m) }
-func (*LeaseGrantResponse) ProtoMessage()    {}
+func (m *LeaseGrantResponse) Reset()                    { *m = LeaseGrantResponse{} }
+func (m *LeaseGrantResponse) String() string            { return proto.CompactTextString(m) }
+func (*LeaseGrantResponse) ProtoMessage()               {}
+func (*LeaseGrantResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{23} }
 
 func (m *LeaseGrantResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1013,20 +1281,23 @@ func (m *LeaseGrantResponse) GetHeader() *ResponseHeader {
 }
 
 type LeaseRevokeRequest struct {
-	ID int64 `protobuf:"varint,1,opt,name=ID,proto3" json:"ID,omitempty"`
+	// ID is the lease ID to revoke. When the ID is revoked, all associated keys will be deleted.
+	ID int64 `protobuf:"varint,1,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
 }
 
-func (m *LeaseRevokeRequest) Reset()         { *m = LeaseRevokeRequest{} }
-func (m *LeaseRevokeRequest) String() string { return proto.CompactTextString(m) }
-func (*LeaseRevokeRequest) ProtoMessage()    {}
+func (m *LeaseRevokeRequest) Reset()                    { *m = LeaseRevokeRequest{} }
+func (m *LeaseRevokeRequest) String() string            { return proto.CompactTextString(m) }
+func (*LeaseRevokeRequest) ProtoMessage()               {}
+func (*LeaseRevokeRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{24} }
 
 type LeaseRevokeResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *LeaseRevokeResponse) Reset()         { *m = LeaseRevokeResponse{} }
-func (m *LeaseRevokeResponse) String() string { return proto.CompactTextString(m) }
-func (*LeaseRevokeResponse) ProtoMessage()    {}
+func (m *LeaseRevokeResponse) Reset()                    { *m = LeaseRevokeResponse{} }
+func (m *LeaseRevokeResponse) String() string            { return proto.CompactTextString(m) }
+func (*LeaseRevokeResponse) ProtoMessage()               {}
+func (*LeaseRevokeResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{25} }
 
 func (m *LeaseRevokeResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1036,22 +1307,27 @@ func (m *LeaseRevokeResponse) GetHeader() *ResponseHeader {
 }
 
 type LeaseKeepAliveRequest struct {
-	ID int64 `protobuf:"varint,1,opt,name=ID,proto3" json:"ID,omitempty"`
+	// ID is the lease ID for the lease to keep alive.
+	ID int64 `protobuf:"varint,1,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
 }
 
-func (m *LeaseKeepAliveRequest) Reset()         { *m = LeaseKeepAliveRequest{} }
-func (m *LeaseKeepAliveRequest) String() string { return proto.CompactTextString(m) }
-func (*LeaseKeepAliveRequest) ProtoMessage()    {}
+func (m *LeaseKeepAliveRequest) Reset()                    { *m = LeaseKeepAliveRequest{} }
+func (m *LeaseKeepAliveRequest) String() string            { return proto.CompactTextString(m) }
+func (*LeaseKeepAliveRequest) ProtoMessage()               {}
+func (*LeaseKeepAliveRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{26} }
 
 type LeaseKeepAliveResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	ID     int64           `protobuf:"varint,2,opt,name=ID,proto3" json:"ID,omitempty"`
-	TTL    int64           `protobuf:"varint,3,opt,name=TTL,proto3" json:"TTL,omitempty"`
+	// ID is the lease ID from the keep alive request.
+	ID int64 `protobuf:"varint,2,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
+	// TTL is the new time-to-live for the lease.
+	TTL int64 `protobuf:"varint,3,opt,name=TTL,json=tTL,proto3" json:"TTL,omitempty"`
 }
 
-func (m *LeaseKeepAliveResponse) Reset()         { *m = LeaseKeepAliveResponse{} }
-func (m *LeaseKeepAliveResponse) String() string { return proto.CompactTextString(m) }
-func (*LeaseKeepAliveResponse) ProtoMessage()    {}
+func (m *LeaseKeepAliveResponse) Reset()                    { *m = LeaseKeepAliveResponse{} }
+func (m *LeaseKeepAliveResponse) String() string            { return proto.CompactTextString(m) }
+func (*LeaseKeepAliveResponse) ProtoMessage()               {}
+func (*LeaseKeepAliveResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{27} }
 
 func (m *LeaseKeepAliveResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1060,37 +1336,78 @@ func (m *LeaseKeepAliveResponse) GetHeader() *ResponseHeader {
 	return nil
 }
 
-type Member struct {
-	ID uint64 `protobuf:"varint,1,opt,name=ID,proto3" json:"ID,omitempty"`
-	// If the member is not started, name will be an empty string.
-	Name     string   `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	IsLeader bool     `protobuf:"varint,3,opt,name=IsLeader,proto3" json:"IsLeader,omitempty"`
-	PeerURLs []string `protobuf:"bytes,4,rep,name=peerURLs" json:"peerURLs,omitempty"`
-	// If the member is not started, client_URLs will be an zero length
-	// string array.
-	ClientURLs []string `protobuf:"bytes,5,rep,name=clientURLs" json:"clientURLs,omitempty"`
+type LeaseTimeToLiveRequest struct {
+	// ID is the lease ID for the lease.
+	ID int64 `protobuf:"varint,1,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
+	// keys is true to query all the keys attached to this lease.
+	Keys bool `protobuf:"varint,2,opt,name=keys,proto3" json:"keys,omitempty"`
 }
 
-func (m *Member) Reset()         { *m = Member{} }
-func (m *Member) String() string { return proto.CompactTextString(m) }
-func (*Member) ProtoMessage()    {}
+func (m *LeaseTimeToLiveRequest) Reset()                    { *m = LeaseTimeToLiveRequest{} }
+func (m *LeaseTimeToLiveRequest) String() string            { return proto.CompactTextString(m) }
+func (*LeaseTimeToLiveRequest) ProtoMessage()               {}
+func (*LeaseTimeToLiveRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{28} }
+
+type LeaseTimeToLiveResponse struct {
+	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	// ID is the lease ID from the keep alive request.
+	ID int64 `protobuf:"varint,2,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
+	// TTL is the remaining TTL in seconds for the lease; the lease will expire in under TTL+1 seconds.
+	TTL int64 `protobuf:"varint,3,opt,name=TTL,json=tTL,proto3" json:"TTL,omitempty"`
+	// GrantedTTL is the initial granted time in seconds upon lease creation/renewal.
+	GrantedTTL int64 `protobuf:"varint,4,opt,name=grantedTTL,proto3" json:"grantedTTL,omitempty"`
+	// Keys is the list of keys attached to this lease.
+	Keys [][]byte `protobuf:"bytes,5,rep,name=keys" json:"keys,omitempty"`
+}
+
+func (m *LeaseTimeToLiveResponse) Reset()                    { *m = LeaseTimeToLiveResponse{} }
+func (m *LeaseTimeToLiveResponse) String() string            { return proto.CompactTextString(m) }
+func (*LeaseTimeToLiveResponse) ProtoMessage()               {}
+func (*LeaseTimeToLiveResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{29} }
+
+func (m *LeaseTimeToLiveResponse) GetHeader() *ResponseHeader {
+	if m != nil {
+		return m.Header
+	}
+	return nil
+}
+
+type Member struct {
+	// ID is the member ID for this member.
+	ID uint64 `protobuf:"varint,1,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
+	// name is the human-readable name of the member. If the member is not started, the name will be an empty string.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// peerURLs is the list of URLs the member exposes to the cluster for communication.
+	PeerURLs []string `protobuf:"bytes,3,rep,name=peerURLs" json:"peerURLs,omitempty"`
+	// clientURLs is the list of URLs the member exposes to clients for communication. If the member is not started, clientURLs will be empty.
+	ClientURLs []string `protobuf:"bytes,4,rep,name=clientURLs" json:"clientURLs,omitempty"`
+}
+
+func (m *Member) Reset()                    { *m = Member{} }
+func (m *Member) String() string            { return proto.CompactTextString(m) }
+func (*Member) ProtoMessage()               {}
+func (*Member) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{30} }
 
 type MemberAddRequest struct {
+	// peerURLs is the list of URLs the added member will use to communicate with the cluster.
 	PeerURLs []string `protobuf:"bytes,1,rep,name=peerURLs" json:"peerURLs,omitempty"`
 }
 
-func (m *MemberAddRequest) Reset()         { *m = MemberAddRequest{} }
-func (m *MemberAddRequest) String() string { return proto.CompactTextString(m) }
-func (*MemberAddRequest) ProtoMessage()    {}
+func (m *MemberAddRequest) Reset()                    { *m = MemberAddRequest{} }
+func (m *MemberAddRequest) String() string            { return proto.CompactTextString(m) }
+func (*MemberAddRequest) ProtoMessage()               {}
+func (*MemberAddRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{31} }
 
 type MemberAddResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	Member *Member         `protobuf:"bytes,2,opt,name=member" json:"member,omitempty"`
+	// member is the member information for the added member.
+	Member *Member `protobuf:"bytes,2,opt,name=member" json:"member,omitempty"`
 }
 
-func (m *MemberAddResponse) Reset()         { *m = MemberAddResponse{} }
-func (m *MemberAddResponse) String() string { return proto.CompactTextString(m) }
-func (*MemberAddResponse) ProtoMessage()    {}
+func (m *MemberAddResponse) Reset()                    { *m = MemberAddResponse{} }
+func (m *MemberAddResponse) String() string            { return proto.CompactTextString(m) }
+func (*MemberAddResponse) ProtoMessage()               {}
+func (*MemberAddResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{32} }
 
 func (m *MemberAddResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1107,20 +1424,23 @@ func (m *MemberAddResponse) GetMember() *Member {
 }
 
 type MemberRemoveRequest struct {
-	ID uint64 `protobuf:"varint,1,opt,name=ID,proto3" json:"ID,omitempty"`
+	// ID is the member ID of the member to remove.
+	ID uint64 `protobuf:"varint,1,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
 }
 
-func (m *MemberRemoveRequest) Reset()         { *m = MemberRemoveRequest{} }
-func (m *MemberRemoveRequest) String() string { return proto.CompactTextString(m) }
-func (*MemberRemoveRequest) ProtoMessage()    {}
+func (m *MemberRemoveRequest) Reset()                    { *m = MemberRemoveRequest{} }
+func (m *MemberRemoveRequest) String() string            { return proto.CompactTextString(m) }
+func (*MemberRemoveRequest) ProtoMessage()               {}
+func (*MemberRemoveRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{33} }
 
 type MemberRemoveResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *MemberRemoveResponse) Reset()         { *m = MemberRemoveResponse{} }
-func (m *MemberRemoveResponse) String() string { return proto.CompactTextString(m) }
-func (*MemberRemoveResponse) ProtoMessage()    {}
+func (m *MemberRemoveResponse) Reset()                    { *m = MemberRemoveResponse{} }
+func (m *MemberRemoveResponse) String() string            { return proto.CompactTextString(m) }
+func (*MemberRemoveResponse) ProtoMessage()               {}
+func (*MemberRemoveResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{34} }
 
 func (m *MemberRemoveResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1130,21 +1450,25 @@ func (m *MemberRemoveResponse) GetHeader() *ResponseHeader {
 }
 
 type MemberUpdateRequest struct {
-	ID       uint64   `protobuf:"varint,1,opt,name=ID,proto3" json:"ID,omitempty"`
+	// ID is the member ID of the member to update.
+	ID uint64 `protobuf:"varint,1,opt,name=ID,json=iD,proto3" json:"ID,omitempty"`
+	// peerURLs is the new list of URLs the member will use to communicate with the cluster.
 	PeerURLs []string `protobuf:"bytes,2,rep,name=peerURLs" json:"peerURLs,omitempty"`
 }
 
-func (m *MemberUpdateRequest) Reset()         { *m = MemberUpdateRequest{} }
-func (m *MemberUpdateRequest) String() string { return proto.CompactTextString(m) }
-func (*MemberUpdateRequest) ProtoMessage()    {}
+func (m *MemberUpdateRequest) Reset()                    { *m = MemberUpdateRequest{} }
+func (m *MemberUpdateRequest) String() string            { return proto.CompactTextString(m) }
+func (*MemberUpdateRequest) ProtoMessage()               {}
+func (*MemberUpdateRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{35} }
 
 type MemberUpdateResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *MemberUpdateResponse) Reset()         { *m = MemberUpdateResponse{} }
-func (m *MemberUpdateResponse) String() string { return proto.CompactTextString(m) }
-func (*MemberUpdateResponse) ProtoMessage()    {}
+func (m *MemberUpdateResponse) Reset()                    { *m = MemberUpdateResponse{} }
+func (m *MemberUpdateResponse) String() string            { return proto.CompactTextString(m) }
+func (*MemberUpdateResponse) ProtoMessage()               {}
+func (*MemberUpdateResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{36} }
 
 func (m *MemberUpdateResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1156,18 +1480,21 @@ func (m *MemberUpdateResponse) GetHeader() *ResponseHeader {
 type MemberListRequest struct {
 }
 
-func (m *MemberListRequest) Reset()         { *m = MemberListRequest{} }
-func (m *MemberListRequest) String() string { return proto.CompactTextString(m) }
-func (*MemberListRequest) ProtoMessage()    {}
+func (m *MemberListRequest) Reset()                    { *m = MemberListRequest{} }
+func (m *MemberListRequest) String() string            { return proto.CompactTextString(m) }
+func (*MemberListRequest) ProtoMessage()               {}
+func (*MemberListRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{37} }
 
 type MemberListResponse struct {
-	Header  *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	Members []*Member       `protobuf:"bytes,2,rep,name=members" json:"members,omitempty"`
+	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	// members is a list of all members associated with the cluster.
+	Members []*Member `protobuf:"bytes,2,rep,name=members" json:"members,omitempty"`
 }
 
-func (m *MemberListResponse) Reset()         { *m = MemberListResponse{} }
-func (m *MemberListResponse) String() string { return proto.CompactTextString(m) }
-func (*MemberListResponse) ProtoMessage()    {}
+func (m *MemberListResponse) Reset()                    { *m = MemberListResponse{} }
+func (m *MemberListResponse) String() string            { return proto.CompactTextString(m) }
+func (*MemberListResponse) ProtoMessage()               {}
+func (*MemberListResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{38} }
 
 func (m *MemberListResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1186,17 +1513,19 @@ func (m *MemberListResponse) GetMembers() []*Member {
 type DefragmentRequest struct {
 }
 
-func (m *DefragmentRequest) Reset()         { *m = DefragmentRequest{} }
-func (m *DefragmentRequest) String() string { return proto.CompactTextString(m) }
-func (*DefragmentRequest) ProtoMessage()    {}
+func (m *DefragmentRequest) Reset()                    { *m = DefragmentRequest{} }
+func (m *DefragmentRequest) String() string            { return proto.CompactTextString(m) }
+func (*DefragmentRequest) ProtoMessage()               {}
+func (*DefragmentRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{39} }
 
 type DefragmentResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *DefragmentResponse) Reset()         { *m = DefragmentResponse{} }
-func (m *DefragmentResponse) String() string { return proto.CompactTextString(m) }
-func (*DefragmentResponse) ProtoMessage()    {}
+func (m *DefragmentResponse) Reset()                    { *m = DefragmentResponse{} }
+func (m *DefragmentResponse) String() string            { return proto.CompactTextString(m) }
+func (*DefragmentResponse) ProtoMessage()               {}
+func (*DefragmentResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{40} }
 
 func (m *DefragmentResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1206,33 +1535,44 @@ func (m *DefragmentResponse) GetHeader() *ResponseHeader {
 }
 
 type AlarmRequest struct {
+	// action is the kind of alarm request to issue. The action
+	// may GET alarm statuses, ACTIVATE an alarm, or DEACTIVATE a
+	// raised alarm.
 	Action AlarmRequest_AlarmAction `protobuf:"varint,1,opt,name=action,proto3,enum=etcdserverpb.AlarmRequest_AlarmAction" json:"action,omitempty"`
-	// MemberID is the member raising the alarm request
-	MemberID uint64    `protobuf:"varint,2,opt,name=memberID,proto3" json:"memberID,omitempty"`
-	Alarm    AlarmType `protobuf:"varint,3,opt,name=alarm,proto3,enum=etcdserverpb.AlarmType" json:"alarm,omitempty"`
+	// memberID is the ID of the member associated with the alarm. If memberID is 0, the
+	// alarm request covers all members.
+	MemberID uint64 `protobuf:"varint,2,opt,name=memberID,proto3" json:"memberID,omitempty"`
+	// alarm is the type of alarm to consider for this request.
+	Alarm AlarmType `protobuf:"varint,3,opt,name=alarm,proto3,enum=etcdserverpb.AlarmType" json:"alarm,omitempty"`
 }
 
-func (m *AlarmRequest) Reset()         { *m = AlarmRequest{} }
-func (m *AlarmRequest) String() string { return proto.CompactTextString(m) }
-func (*AlarmRequest) ProtoMessage()    {}
+func (m *AlarmRequest) Reset()                    { *m = AlarmRequest{} }
+func (m *AlarmRequest) String() string            { return proto.CompactTextString(m) }
+func (*AlarmRequest) ProtoMessage()               {}
+func (*AlarmRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{41} }
 
 type AlarmMember struct {
-	MemberID uint64    `protobuf:"varint,1,opt,name=memberID,proto3" json:"memberID,omitempty"`
-	Alarm    AlarmType `protobuf:"varint,2,opt,name=alarm,proto3,enum=etcdserverpb.AlarmType" json:"alarm,omitempty"`
+	// memberID is the ID of the member associated with the raised alarm.
+	MemberID uint64 `protobuf:"varint,1,opt,name=memberID,proto3" json:"memberID,omitempty"`
+	// alarm is the type of alarm which has been raised.
+	Alarm AlarmType `protobuf:"varint,2,opt,name=alarm,proto3,enum=etcdserverpb.AlarmType" json:"alarm,omitempty"`
 }
 
-func (m *AlarmMember) Reset()         { *m = AlarmMember{} }
-func (m *AlarmMember) String() string { return proto.CompactTextString(m) }
-func (*AlarmMember) ProtoMessage()    {}
+func (m *AlarmMember) Reset()                    { *m = AlarmMember{} }
+func (m *AlarmMember) String() string            { return proto.CompactTextString(m) }
+func (*AlarmMember) ProtoMessage()               {}
+func (*AlarmMember) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{42} }
 
 type AlarmResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	Alarms []*AlarmMember  `protobuf:"bytes,2,rep,name=alarms" json:"alarms,omitempty"`
+	// alarms is a list of alarms associated with the alarm request.
+	Alarms []*AlarmMember `protobuf:"bytes,2,rep,name=alarms" json:"alarms,omitempty"`
 }
 
-func (m *AlarmResponse) Reset()         { *m = AlarmResponse{} }
-func (m *AlarmResponse) String() string { return proto.CompactTextString(m) }
-func (*AlarmResponse) ProtoMessage()    {}
+func (m *AlarmResponse) Reset()                    { *m = AlarmResponse{} }
+func (m *AlarmResponse) String() string            { return proto.CompactTextString(m) }
+func (*AlarmResponse) ProtoMessage()               {}
+func (*AlarmResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{43} }
 
 func (m *AlarmResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1251,18 +1591,29 @@ func (m *AlarmResponse) GetAlarms() []*AlarmMember {
 type StatusRequest struct {
 }
 
-func (m *StatusRequest) Reset()         { *m = StatusRequest{} }
-func (m *StatusRequest) String() string { return proto.CompactTextString(m) }
-func (*StatusRequest) ProtoMessage()    {}
+func (m *StatusRequest) Reset()                    { *m = StatusRequest{} }
+func (m *StatusRequest) String() string            { return proto.CompactTextString(m) }
+func (*StatusRequest) ProtoMessage()               {}
+func (*StatusRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{44} }
 
 type StatusResponse struct {
-	Header  *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
-	Version string          `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	// version is the cluster protocol version used by the responding member.
+	Version string `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	// dbSize is the size of the backend database, in bytes, of the responding member.
+	DbSize int64 `protobuf:"varint,3,opt,name=dbSize,proto3" json:"dbSize,omitempty"`
+	// leader is the member ID which the responding member believes is the current leader.
+	Leader uint64 `protobuf:"varint,4,opt,name=leader,proto3" json:"leader,omitempty"`
+	// raftIndex is the current raft index of the responding member.
+	RaftIndex uint64 `protobuf:"varint,5,opt,name=raftIndex,proto3" json:"raftIndex,omitempty"`
+	// raftTerm is the current raft term of the responding member.
+	RaftTerm uint64 `protobuf:"varint,6,opt,name=raftTerm,proto3" json:"raftTerm,omitempty"`
 }
 
-func (m *StatusResponse) Reset()         { *m = StatusResponse{} }
-func (m *StatusResponse) String() string { return proto.CompactTextString(m) }
-func (*StatusResponse) ProtoMessage()    {}
+func (m *StatusResponse) Reset()                    { *m = StatusResponse{} }
+func (m *StatusResponse) String() string            { return proto.CompactTextString(m) }
+func (*StatusResponse) ProtoMessage()               {}
+func (*StatusResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{45} }
 
 func (m *StatusResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1274,114 +1625,180 @@ func (m *StatusResponse) GetHeader() *ResponseHeader {
 type AuthEnableRequest struct {
 }
 
-func (m *AuthEnableRequest) Reset()         { *m = AuthEnableRequest{} }
-func (m *AuthEnableRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthEnableRequest) ProtoMessage()    {}
+func (m *AuthEnableRequest) Reset()                    { *m = AuthEnableRequest{} }
+func (m *AuthEnableRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthEnableRequest) ProtoMessage()               {}
+func (*AuthEnableRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{46} }
 
 type AuthDisableRequest struct {
 }
 
-func (m *AuthDisableRequest) Reset()         { *m = AuthDisableRequest{} }
-func (m *AuthDisableRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthDisableRequest) ProtoMessage()    {}
+func (m *AuthDisableRequest) Reset()                    { *m = AuthDisableRequest{} }
+func (m *AuthDisableRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthDisableRequest) ProtoMessage()               {}
+func (*AuthDisableRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{47} }
 
 type AuthenticateRequest struct {
+	Name     string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
 }
 
-func (m *AuthenticateRequest) Reset()         { *m = AuthenticateRequest{} }
-func (m *AuthenticateRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthenticateRequest) ProtoMessage()    {}
+func (m *AuthenticateRequest) Reset()                    { *m = AuthenticateRequest{} }
+func (m *AuthenticateRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthenticateRequest) ProtoMessage()               {}
+func (*AuthenticateRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{48} }
 
 type AuthUserAddRequest struct {
 	Name     string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
 }
 
-func (m *AuthUserAddRequest) Reset()         { *m = AuthUserAddRequest{} }
-func (m *AuthUserAddRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthUserAddRequest) ProtoMessage()    {}
+func (m *AuthUserAddRequest) Reset()                    { *m = AuthUserAddRequest{} }
+func (m *AuthUserAddRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserAddRequest) ProtoMessage()               {}
+func (*AuthUserAddRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{49} }
 
 type AuthUserGetRequest struct {
-}
-
-func (m *AuthUserGetRequest) Reset()         { *m = AuthUserGetRequest{} }
-func (m *AuthUserGetRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthUserGetRequest) ProtoMessage()    {}
-
-type AuthUserDeleteRequest struct {
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 }
 
-func (m *AuthUserDeleteRequest) Reset()         { *m = AuthUserDeleteRequest{} }
-func (m *AuthUserDeleteRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthUserDeleteRequest) ProtoMessage()    {}
+func (m *AuthUserGetRequest) Reset()                    { *m = AuthUserGetRequest{} }
+func (m *AuthUserGetRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserGetRequest) ProtoMessage()               {}
+func (*AuthUserGetRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{50} }
+
+type AuthUserDeleteRequest struct {
+	// name is the name of the user to delete.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+}
+
+func (m *AuthUserDeleteRequest) Reset()                    { *m = AuthUserDeleteRequest{} }
+func (m *AuthUserDeleteRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserDeleteRequest) ProtoMessage()               {}
+func (*AuthUserDeleteRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{51} }
 
 type AuthUserChangePasswordRequest struct {
-	Name     string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// name is the name of the user whose password is being changed.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// password is the new password for the user.
 	Password string `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
 }
 
 func (m *AuthUserChangePasswordRequest) Reset()         { *m = AuthUserChangePasswordRequest{} }
 func (m *AuthUserChangePasswordRequest) String() string { return proto.CompactTextString(m) }
 func (*AuthUserChangePasswordRequest) ProtoMessage()    {}
-
-type AuthUserGrantRequest struct {
+func (*AuthUserChangePasswordRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptorRpc, []int{52}
 }
 
-func (m *AuthUserGrantRequest) Reset()         { *m = AuthUserGrantRequest{} }
-func (m *AuthUserGrantRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthUserGrantRequest) ProtoMessage()    {}
-
-type AuthUserRevokeRequest struct {
+type AuthUserGrantRoleRequest struct {
+	// user is the name of the user which should be granted a given role.
+	User string `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	// role is the name of the role to grant to the user.
+	Role string `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
 }
 
-func (m *AuthUserRevokeRequest) Reset()         { *m = AuthUserRevokeRequest{} }
-func (m *AuthUserRevokeRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthUserRevokeRequest) ProtoMessage()    {}
+func (m *AuthUserGrantRoleRequest) Reset()                    { *m = AuthUserGrantRoleRequest{} }
+func (m *AuthUserGrantRoleRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserGrantRoleRequest) ProtoMessage()               {}
+func (*AuthUserGrantRoleRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{53} }
+
+type AuthUserRevokeRoleRequest struct {
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Role string `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
+}
+
+func (m *AuthUserRevokeRoleRequest) Reset()                    { *m = AuthUserRevokeRoleRequest{} }
+func (m *AuthUserRevokeRoleRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserRevokeRoleRequest) ProtoMessage()               {}
+func (*AuthUserRevokeRoleRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{54} }
 
 type AuthRoleAddRequest struct {
+	// name is the name of the role to add to the authentication system.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 }
 
-func (m *AuthRoleAddRequest) Reset()         { *m = AuthRoleAddRequest{} }
-func (m *AuthRoleAddRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleAddRequest) ProtoMessage()    {}
+func (m *AuthRoleAddRequest) Reset()                    { *m = AuthRoleAddRequest{} }
+func (m *AuthRoleAddRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthRoleAddRequest) ProtoMessage()               {}
+func (*AuthRoleAddRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{55} }
 
 type AuthRoleGetRequest struct {
+	Role string `protobuf:"bytes,1,opt,name=role,proto3" json:"role,omitempty"`
 }
 
-func (m *AuthRoleGetRequest) Reset()         { *m = AuthRoleGetRequest{} }
-func (m *AuthRoleGetRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleGetRequest) ProtoMessage()    {}
+func (m *AuthRoleGetRequest) Reset()                    { *m = AuthRoleGetRequest{} }
+func (m *AuthRoleGetRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthRoleGetRequest) ProtoMessage()               {}
+func (*AuthRoleGetRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{56} }
+
+type AuthUserListRequest struct {
+}
+
+func (m *AuthUserListRequest) Reset()                    { *m = AuthUserListRequest{} }
+func (m *AuthUserListRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserListRequest) ProtoMessage()               {}
+func (*AuthUserListRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{57} }
+
+type AuthRoleListRequest struct {
+}
+
+func (m *AuthRoleListRequest) Reset()                    { *m = AuthRoleListRequest{} }
+func (m *AuthRoleListRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthRoleListRequest) ProtoMessage()               {}
+func (*AuthRoleListRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{58} }
 
 type AuthRoleDeleteRequest struct {
+	Role string `protobuf:"bytes,1,opt,name=role,proto3" json:"role,omitempty"`
 }
 
-func (m *AuthRoleDeleteRequest) Reset()         { *m = AuthRoleDeleteRequest{} }
-func (m *AuthRoleDeleteRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleDeleteRequest) ProtoMessage()    {}
+func (m *AuthRoleDeleteRequest) Reset()                    { *m = AuthRoleDeleteRequest{} }
+func (m *AuthRoleDeleteRequest) String() string            { return proto.CompactTextString(m) }
+func (*AuthRoleDeleteRequest) ProtoMessage()               {}
+func (*AuthRoleDeleteRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{59} }
 
-type AuthRoleGrantRequest struct {
+type AuthRoleGrantPermissionRequest struct {
+	// name is the name of the role which will be granted the permission.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// perm is the permission to grant to the role.
+	Perm *authpb.Permission `protobuf:"bytes,2,opt,name=perm" json:"perm,omitempty"`
 }
 
-func (m *AuthRoleGrantRequest) Reset()         { *m = AuthRoleGrantRequest{} }
-func (m *AuthRoleGrantRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleGrantRequest) ProtoMessage()    {}
-
-type AuthRoleRevokeRequest struct {
+func (m *AuthRoleGrantPermissionRequest) Reset()         { *m = AuthRoleGrantPermissionRequest{} }
+func (m *AuthRoleGrantPermissionRequest) String() string { return proto.CompactTextString(m) }
+func (*AuthRoleGrantPermissionRequest) ProtoMessage()    {}
+func (*AuthRoleGrantPermissionRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptorRpc, []int{60}
 }
 
-func (m *AuthRoleRevokeRequest) Reset()         { *m = AuthRoleRevokeRequest{} }
-func (m *AuthRoleRevokeRequest) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleRevokeRequest) ProtoMessage()    {}
+func (m *AuthRoleGrantPermissionRequest) GetPerm() *authpb.Permission {
+	if m != nil {
+		return m.Perm
+	}
+	return nil
+}
+
+type AuthRoleRevokePermissionRequest struct {
+	Role     string `protobuf:"bytes,1,opt,name=role,proto3" json:"role,omitempty"`
+	Key      string `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	RangeEnd string `protobuf:"bytes,3,opt,name=range_end,json=rangeEnd,proto3" json:"range_end,omitempty"`
+}
+
+func (m *AuthRoleRevokePermissionRequest) Reset()         { *m = AuthRoleRevokePermissionRequest{} }
+func (m *AuthRoleRevokePermissionRequest) String() string { return proto.CompactTextString(m) }
+func (*AuthRoleRevokePermissionRequest) ProtoMessage()    {}
+func (*AuthRoleRevokePermissionRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptorRpc, []int{61}
+}
 
 type AuthEnableResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthEnableResponse) Reset()         { *m = AuthEnableResponse{} }
-func (m *AuthEnableResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthEnableResponse) ProtoMessage()    {}
+func (m *AuthEnableResponse) Reset()                    { *m = AuthEnableResponse{} }
+func (m *AuthEnableResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthEnableResponse) ProtoMessage()               {}
+func (*AuthEnableResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{62} }
 
 func (m *AuthEnableResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1394,9 +1811,10 @@ type AuthDisableResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthDisableResponse) Reset()         { *m = AuthDisableResponse{} }
-func (m *AuthDisableResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthDisableResponse) ProtoMessage()    {}
+func (m *AuthDisableResponse) Reset()                    { *m = AuthDisableResponse{} }
+func (m *AuthDisableResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthDisableResponse) ProtoMessage()               {}
+func (*AuthDisableResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{63} }
 
 func (m *AuthDisableResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1407,11 +1825,14 @@ func (m *AuthDisableResponse) GetHeader() *ResponseHeader {
 
 type AuthenticateResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	// token is an authorized token that can be used in succeeding RPCs
+	Token string `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
 }
 
-func (m *AuthenticateResponse) Reset()         { *m = AuthenticateResponse{} }
-func (m *AuthenticateResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthenticateResponse) ProtoMessage()    {}
+func (m *AuthenticateResponse) Reset()                    { *m = AuthenticateResponse{} }
+func (m *AuthenticateResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthenticateResponse) ProtoMessage()               {}
+func (*AuthenticateResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{64} }
 
 func (m *AuthenticateResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1424,9 +1845,10 @@ type AuthUserAddResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthUserAddResponse) Reset()         { *m = AuthUserAddResponse{} }
-func (m *AuthUserAddResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthUserAddResponse) ProtoMessage()    {}
+func (m *AuthUserAddResponse) Reset()                    { *m = AuthUserAddResponse{} }
+func (m *AuthUserAddResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserAddResponse) ProtoMessage()               {}
+func (*AuthUserAddResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{65} }
 
 func (m *AuthUserAddResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1437,11 +1859,13 @@ func (m *AuthUserAddResponse) GetHeader() *ResponseHeader {
 
 type AuthUserGetResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	Roles  []string        `protobuf:"bytes,2,rep,name=roles" json:"roles,omitempty"`
 }
 
-func (m *AuthUserGetResponse) Reset()         { *m = AuthUserGetResponse{} }
-func (m *AuthUserGetResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthUserGetResponse) ProtoMessage()    {}
+func (m *AuthUserGetResponse) Reset()                    { *m = AuthUserGetResponse{} }
+func (m *AuthUserGetResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserGetResponse) ProtoMessage()               {}
+func (*AuthUserGetResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{66} }
 
 func (m *AuthUserGetResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1454,9 +1878,10 @@ type AuthUserDeleteResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthUserDeleteResponse) Reset()         { *m = AuthUserDeleteResponse{} }
-func (m *AuthUserDeleteResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthUserDeleteResponse) ProtoMessage()    {}
+func (m *AuthUserDeleteResponse) Reset()                    { *m = AuthUserDeleteResponse{} }
+func (m *AuthUserDeleteResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserDeleteResponse) ProtoMessage()               {}
+func (*AuthUserDeleteResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{67} }
 
 func (m *AuthUserDeleteResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1472,6 +1897,9 @@ type AuthUserChangePasswordResponse struct {
 func (m *AuthUserChangePasswordResponse) Reset()         { *m = AuthUserChangePasswordResponse{} }
 func (m *AuthUserChangePasswordResponse) String() string { return proto.CompactTextString(m) }
 func (*AuthUserChangePasswordResponse) ProtoMessage()    {}
+func (*AuthUserChangePasswordResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptorRpc, []int{68}
+}
 
 func (m *AuthUserChangePasswordResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1480,30 +1908,32 @@ func (m *AuthUserChangePasswordResponse) GetHeader() *ResponseHeader {
 	return nil
 }
 
-type AuthUserGrantResponse struct {
+type AuthUserGrantRoleResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthUserGrantResponse) Reset()         { *m = AuthUserGrantResponse{} }
-func (m *AuthUserGrantResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthUserGrantResponse) ProtoMessage()    {}
+func (m *AuthUserGrantRoleResponse) Reset()                    { *m = AuthUserGrantRoleResponse{} }
+func (m *AuthUserGrantRoleResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserGrantRoleResponse) ProtoMessage()               {}
+func (*AuthUserGrantRoleResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{69} }
 
-func (m *AuthUserGrantResponse) GetHeader() *ResponseHeader {
+func (m *AuthUserGrantRoleResponse) GetHeader() *ResponseHeader {
 	if m != nil {
 		return m.Header
 	}
 	return nil
 }
 
-type AuthUserRevokeResponse struct {
+type AuthUserRevokeRoleResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthUserRevokeResponse) Reset()         { *m = AuthUserRevokeResponse{} }
-func (m *AuthUserRevokeResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthUserRevokeResponse) ProtoMessage()    {}
+func (m *AuthUserRevokeRoleResponse) Reset()                    { *m = AuthUserRevokeRoleResponse{} }
+func (m *AuthUserRevokeRoleResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserRevokeRoleResponse) ProtoMessage()               {}
+func (*AuthUserRevokeRoleResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{70} }
 
-func (m *AuthUserRevokeResponse) GetHeader() *ResponseHeader {
+func (m *AuthUserRevokeRoleResponse) GetHeader() *ResponseHeader {
 	if m != nil {
 		return m.Header
 	}
@@ -1514,9 +1944,10 @@ type AuthRoleAddResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthRoleAddResponse) Reset()         { *m = AuthRoleAddResponse{} }
-func (m *AuthRoleAddResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleAddResponse) ProtoMessage()    {}
+func (m *AuthRoleAddResponse) Reset()                    { *m = AuthRoleAddResponse{} }
+func (m *AuthRoleAddResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthRoleAddResponse) ProtoMessage()               {}
+func (*AuthRoleAddResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{71} }
 
 func (m *AuthRoleAddResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1526,14 +1957,57 @@ func (m *AuthRoleAddResponse) GetHeader() *ResponseHeader {
 }
 
 type AuthRoleGetResponse struct {
-	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	Header *ResponseHeader      `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	Perm   []*authpb.Permission `protobuf:"bytes,2,rep,name=perm" json:"perm,omitempty"`
 }
 
-func (m *AuthRoleGetResponse) Reset()         { *m = AuthRoleGetResponse{} }
-func (m *AuthRoleGetResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleGetResponse) ProtoMessage()    {}
+func (m *AuthRoleGetResponse) Reset()                    { *m = AuthRoleGetResponse{} }
+func (m *AuthRoleGetResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthRoleGetResponse) ProtoMessage()               {}
+func (*AuthRoleGetResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{72} }
 
 func (m *AuthRoleGetResponse) GetHeader() *ResponseHeader {
+	if m != nil {
+		return m.Header
+	}
+	return nil
+}
+
+func (m *AuthRoleGetResponse) GetPerm() []*authpb.Permission {
+	if m != nil {
+		return m.Perm
+	}
+	return nil
+}
+
+type AuthRoleListResponse struct {
+	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	Roles  []string        `protobuf:"bytes,2,rep,name=roles" json:"roles,omitempty"`
+}
+
+func (m *AuthRoleListResponse) Reset()                    { *m = AuthRoleListResponse{} }
+func (m *AuthRoleListResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthRoleListResponse) ProtoMessage()               {}
+func (*AuthRoleListResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{73} }
+
+func (m *AuthRoleListResponse) GetHeader() *ResponseHeader {
+	if m != nil {
+		return m.Header
+	}
+	return nil
+}
+
+type AuthUserListResponse struct {
+	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
+	Users  []string        `protobuf:"bytes,2,rep,name=users" json:"users,omitempty"`
+}
+
+func (m *AuthUserListResponse) Reset()                    { *m = AuthUserListResponse{} }
+func (m *AuthUserListResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthUserListResponse) ProtoMessage()               {}
+func (*AuthUserListResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{74} }
+
+func (m *AuthUserListResponse) GetHeader() *ResponseHeader {
 	if m != nil {
 		return m.Header
 	}
@@ -1544,9 +2018,10 @@ type AuthRoleDeleteResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthRoleDeleteResponse) Reset()         { *m = AuthRoleDeleteResponse{} }
-func (m *AuthRoleDeleteResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleDeleteResponse) ProtoMessage()    {}
+func (m *AuthRoleDeleteResponse) Reset()                    { *m = AuthRoleDeleteResponse{} }
+func (m *AuthRoleDeleteResponse) String() string            { return proto.CompactTextString(m) }
+func (*AuthRoleDeleteResponse) ProtoMessage()               {}
+func (*AuthRoleDeleteResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{75} }
 
 func (m *AuthRoleDeleteResponse) GetHeader() *ResponseHeader {
 	if m != nil {
@@ -1555,30 +2030,36 @@ func (m *AuthRoleDeleteResponse) GetHeader() *ResponseHeader {
 	return nil
 }
 
-type AuthRoleGrantResponse struct {
+type AuthRoleGrantPermissionResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthRoleGrantResponse) Reset()         { *m = AuthRoleGrantResponse{} }
-func (m *AuthRoleGrantResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleGrantResponse) ProtoMessage()    {}
+func (m *AuthRoleGrantPermissionResponse) Reset()         { *m = AuthRoleGrantPermissionResponse{} }
+func (m *AuthRoleGrantPermissionResponse) String() string { return proto.CompactTextString(m) }
+func (*AuthRoleGrantPermissionResponse) ProtoMessage()    {}
+func (*AuthRoleGrantPermissionResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptorRpc, []int{76}
+}
 
-func (m *AuthRoleGrantResponse) GetHeader() *ResponseHeader {
+func (m *AuthRoleGrantPermissionResponse) GetHeader() *ResponseHeader {
 	if m != nil {
 		return m.Header
 	}
 	return nil
 }
 
-type AuthRoleRevokeResponse struct {
+type AuthRoleRevokePermissionResponse struct {
 	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header" json:"header,omitempty"`
 }
 
-func (m *AuthRoleRevokeResponse) Reset()         { *m = AuthRoleRevokeResponse{} }
-func (m *AuthRoleRevokeResponse) String() string { return proto.CompactTextString(m) }
-func (*AuthRoleRevokeResponse) ProtoMessage()    {}
+func (m *AuthRoleRevokePermissionResponse) Reset()         { *m = AuthRoleRevokePermissionResponse{} }
+func (m *AuthRoleRevokePermissionResponse) String() string { return proto.CompactTextString(m) }
+func (*AuthRoleRevokePermissionResponse) ProtoMessage()    {}
+func (*AuthRoleRevokePermissionResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptorRpc, []int{77}
+}
 
-func (m *AuthRoleRevokeResponse) GetHeader() *ResponseHeader {
+func (m *AuthRoleRevokePermissionResponse) GetHeader() *ResponseHeader {
 	if m != nil {
 		return m.Header
 	}
@@ -1593,8 +2074,8 @@ func init() {
 	proto.RegisterType((*PutResponse)(nil), "etcdserverpb.PutResponse")
 	proto.RegisterType((*DeleteRangeRequest)(nil), "etcdserverpb.DeleteRangeRequest")
 	proto.RegisterType((*DeleteRangeResponse)(nil), "etcdserverpb.DeleteRangeResponse")
-	proto.RegisterType((*RequestUnion)(nil), "etcdserverpb.RequestUnion")
-	proto.RegisterType((*ResponseUnion)(nil), "etcdserverpb.ResponseUnion")
+	proto.RegisterType((*RequestOp)(nil), "etcdserverpb.RequestOp")
+	proto.RegisterType((*ResponseOp)(nil), "etcdserverpb.ResponseOp")
 	proto.RegisterType((*Compare)(nil), "etcdserverpb.Compare")
 	proto.RegisterType((*TxnRequest)(nil), "etcdserverpb.TxnRequest")
 	proto.RegisterType((*TxnResponse)(nil), "etcdserverpb.TxnResponse")
@@ -1602,6 +2083,8 @@ func init() {
 	proto.RegisterType((*CompactionResponse)(nil), "etcdserverpb.CompactionResponse")
 	proto.RegisterType((*HashRequest)(nil), "etcdserverpb.HashRequest")
 	proto.RegisterType((*HashResponse)(nil), "etcdserverpb.HashResponse")
+	proto.RegisterType((*SnapshotRequest)(nil), "etcdserverpb.SnapshotRequest")
+	proto.RegisterType((*SnapshotResponse)(nil), "etcdserverpb.SnapshotResponse")
 	proto.RegisterType((*WatchRequest)(nil), "etcdserverpb.WatchRequest")
 	proto.RegisterType((*WatchCreateRequest)(nil), "etcdserverpb.WatchCreateRequest")
 	proto.RegisterType((*WatchCancelRequest)(nil), "etcdserverpb.WatchCancelRequest")
@@ -1612,6 +2095,8 @@ func init() {
 	proto.RegisterType((*LeaseRevokeResponse)(nil), "etcdserverpb.LeaseRevokeResponse")
 	proto.RegisterType((*LeaseKeepAliveRequest)(nil), "etcdserverpb.LeaseKeepAliveRequest")
 	proto.RegisterType((*LeaseKeepAliveResponse)(nil), "etcdserverpb.LeaseKeepAliveResponse")
+	proto.RegisterType((*LeaseTimeToLiveRequest)(nil), "etcdserverpb.LeaseTimeToLiveRequest")
+	proto.RegisterType((*LeaseTimeToLiveResponse)(nil), "etcdserverpb.LeaseTimeToLiveResponse")
 	proto.RegisterType((*Member)(nil), "etcdserverpb.Member")
 	proto.RegisterType((*MemberAddRequest)(nil), "etcdserverpb.MemberAddRequest")
 	proto.RegisterType((*MemberAddResponse)(nil), "etcdserverpb.MemberAddResponse")
@@ -1635,13 +2120,15 @@ func init() {
 	proto.RegisterType((*AuthUserGetRequest)(nil), "etcdserverpb.AuthUserGetRequest")
 	proto.RegisterType((*AuthUserDeleteRequest)(nil), "etcdserverpb.AuthUserDeleteRequest")
 	proto.RegisterType((*AuthUserChangePasswordRequest)(nil), "etcdserverpb.AuthUserChangePasswordRequest")
-	proto.RegisterType((*AuthUserGrantRequest)(nil), "etcdserverpb.AuthUserGrantRequest")
-	proto.RegisterType((*AuthUserRevokeRequest)(nil), "etcdserverpb.AuthUserRevokeRequest")
+	proto.RegisterType((*AuthUserGrantRoleRequest)(nil), "etcdserverpb.AuthUserGrantRoleRequest")
+	proto.RegisterType((*AuthUserRevokeRoleRequest)(nil), "etcdserverpb.AuthUserRevokeRoleRequest")
 	proto.RegisterType((*AuthRoleAddRequest)(nil), "etcdserverpb.AuthRoleAddRequest")
 	proto.RegisterType((*AuthRoleGetRequest)(nil), "etcdserverpb.AuthRoleGetRequest")
+	proto.RegisterType((*AuthUserListRequest)(nil), "etcdserverpb.AuthUserListRequest")
+	proto.RegisterType((*AuthRoleListRequest)(nil), "etcdserverpb.AuthRoleListRequest")
 	proto.RegisterType((*AuthRoleDeleteRequest)(nil), "etcdserverpb.AuthRoleDeleteRequest")
-	proto.RegisterType((*AuthRoleGrantRequest)(nil), "etcdserverpb.AuthRoleGrantRequest")
-	proto.RegisterType((*AuthRoleRevokeRequest)(nil), "etcdserverpb.AuthRoleRevokeRequest")
+	proto.RegisterType((*AuthRoleGrantPermissionRequest)(nil), "etcdserverpb.AuthRoleGrantPermissionRequest")
+	proto.RegisterType((*AuthRoleRevokePermissionRequest)(nil), "etcdserverpb.AuthRoleRevokePermissionRequest")
 	proto.RegisterType((*AuthEnableResponse)(nil), "etcdserverpb.AuthEnableResponse")
 	proto.RegisterType((*AuthDisableResponse)(nil), "etcdserverpb.AuthDisableResponse")
 	proto.RegisterType((*AuthenticateResponse)(nil), "etcdserverpb.AuthenticateResponse")
@@ -1649,18 +2136,21 @@ func init() {
 	proto.RegisterType((*AuthUserGetResponse)(nil), "etcdserverpb.AuthUserGetResponse")
 	proto.RegisterType((*AuthUserDeleteResponse)(nil), "etcdserverpb.AuthUserDeleteResponse")
 	proto.RegisterType((*AuthUserChangePasswordResponse)(nil), "etcdserverpb.AuthUserChangePasswordResponse")
-	proto.RegisterType((*AuthUserGrantResponse)(nil), "etcdserverpb.AuthUserGrantResponse")
-	proto.RegisterType((*AuthUserRevokeResponse)(nil), "etcdserverpb.AuthUserRevokeResponse")
+	proto.RegisterType((*AuthUserGrantRoleResponse)(nil), "etcdserverpb.AuthUserGrantRoleResponse")
+	proto.RegisterType((*AuthUserRevokeRoleResponse)(nil), "etcdserverpb.AuthUserRevokeRoleResponse")
 	proto.RegisterType((*AuthRoleAddResponse)(nil), "etcdserverpb.AuthRoleAddResponse")
 	proto.RegisterType((*AuthRoleGetResponse)(nil), "etcdserverpb.AuthRoleGetResponse")
+	proto.RegisterType((*AuthRoleListResponse)(nil), "etcdserverpb.AuthRoleListResponse")
+	proto.RegisterType((*AuthUserListResponse)(nil), "etcdserverpb.AuthUserListResponse")
 	proto.RegisterType((*AuthRoleDeleteResponse)(nil), "etcdserverpb.AuthRoleDeleteResponse")
-	proto.RegisterType((*AuthRoleGrantResponse)(nil), "etcdserverpb.AuthRoleGrantResponse")
-	proto.RegisterType((*AuthRoleRevokeResponse)(nil), "etcdserverpb.AuthRoleRevokeResponse")
+	proto.RegisterType((*AuthRoleGrantPermissionResponse)(nil), "etcdserverpb.AuthRoleGrantPermissionResponse")
+	proto.RegisterType((*AuthRoleRevokePermissionResponse)(nil), "etcdserverpb.AuthRoleRevokePermissionResponse")
 	proto.RegisterEnum("etcdserverpb.AlarmType", AlarmType_name, AlarmType_value)
 	proto.RegisterEnum("etcdserverpb.RangeRequest_SortOrder", RangeRequest_SortOrder_name, RangeRequest_SortOrder_value)
 	proto.RegisterEnum("etcdserverpb.RangeRequest_SortTarget", RangeRequest_SortTarget_name, RangeRequest_SortTarget_value)
 	proto.RegisterEnum("etcdserverpb.Compare_CompareResult", Compare_CompareResult_name, Compare_CompareResult_value)
 	proto.RegisterEnum("etcdserverpb.Compare_CompareTarget", Compare_CompareTarget_name, Compare_CompareTarget_value)
+	proto.RegisterEnum("etcdserverpb.WatchCreateRequest_FilterType", WatchCreateRequest_FilterType_name, WatchCreateRequest_FilterType_value)
 	proto.RegisterEnum("etcdserverpb.AlarmRequest_AlarmAction", AlarmRequest_AlarmAction_name, AlarmRequest_AlarmAction_value)
 }
 
@@ -1668,26 +2158,31 @@ func init() {
 var _ context.Context
 var _ grpc.ClientConn
 
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+const _ = grpc.SupportPackageIsVersion3
+
 // Client API for KV service
 
 type KVClient interface {
-	// Range gets the keys in the range from the store.
+	// Range gets the keys in the range from the key-value store.
 	Range(ctx context.Context, in *RangeRequest, opts ...grpc.CallOption) (*RangeResponse, error)
-	// Put puts the given key into the store.
-	// A put request increases the revision of the store,
+	// Put puts the given key into the key-value store.
+	// A put request increments the revision of the key-value store
 	// and generates one event in the event history.
 	Put(ctx context.Context, in *PutRequest, opts ...grpc.CallOption) (*PutResponse, error)
-	// Delete deletes the given range from the store.
-	// A delete request increase the revision of the store,
-	// and generates one event in the event history.
+	// DeleteRange deletes the given range from the key-value store.
+	// A delete request increments the revision of the key-value store
+	// and generates a delete event in the event history for every deleted key.
 	DeleteRange(ctx context.Context, in *DeleteRangeRequest, opts ...grpc.CallOption) (*DeleteRangeResponse, error)
-	// Txn processes all the requests in one transaction.
-	// A txn request increases the revision of the store,
-	// and generates events with the same revision in the event history.
+	// Txn processes multiple requests in a single transaction.
+	// A txn request increments the revision of the key-value store
+	// and generates events with the same revision for every completed request.
 	// It is not allowed to modify the same key several times within one txn.
 	Txn(ctx context.Context, in *TxnRequest, opts ...grpc.CallOption) (*TxnResponse, error)
-	// Compact compacts the event history in etcd. User should compact the
-	// event history periodically, or it will grow infinitely.
+	// Compact compacts the event history in the etcd key-value store. The key-value
+	// store should be periodically compacted or the event history will continue to grow
+	// indefinitely.
 	Compact(ctx context.Context, in *CompactionRequest, opts ...grpc.CallOption) (*CompactionResponse, error)
 }
 
@@ -1747,23 +2242,24 @@ func (c *kVClient) Compact(ctx context.Context, in *CompactionRequest, opts ...g
 // Server API for KV service
 
 type KVServer interface {
-	// Range gets the keys in the range from the store.
+	// Range gets the keys in the range from the key-value store.
 	Range(context.Context, *RangeRequest) (*RangeResponse, error)
-	// Put puts the given key into the store.
-	// A put request increases the revision of the store,
+	// Put puts the given key into the key-value store.
+	// A put request increments the revision of the key-value store
 	// and generates one event in the event history.
 	Put(context.Context, *PutRequest) (*PutResponse, error)
-	// Delete deletes the given range from the store.
-	// A delete request increase the revision of the store,
-	// and generates one event in the event history.
+	// DeleteRange deletes the given range from the key-value store.
+	// A delete request increments the revision of the key-value store
+	// and generates a delete event in the event history for every deleted key.
 	DeleteRange(context.Context, *DeleteRangeRequest) (*DeleteRangeResponse, error)
-	// Txn processes all the requests in one transaction.
-	// A txn request increases the revision of the store,
-	// and generates events with the same revision in the event history.
+	// Txn processes multiple requests in a single transaction.
+	// A txn request increments the revision of the key-value store
+	// and generates events with the same revision for every completed request.
 	// It is not allowed to modify the same key several times within one txn.
 	Txn(context.Context, *TxnRequest) (*TxnResponse, error)
-	// Compact compacts the event history in etcd. User should compact the
-	// event history periodically, or it will grow infinitely.
+	// Compact compacts the event history in the etcd key-value store. The key-value
+	// store should be periodically compacted or the event history will continue to grow
+	// indefinitely.
 	Compact(context.Context, *CompactionRequest) (*CompactionResponse, error)
 }
 
@@ -1771,64 +2267,94 @@ func RegisterKVServer(s *grpc.Server, srv KVServer) {
 	s.RegisterService(&_KV_serviceDesc, srv)
 }
 
-func _KV_Range_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _KV_Range_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RangeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(KVServer).Range(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(KVServer).Range(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.KV/Range",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVServer).Range(ctx, req.(*RangeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _KV_Put_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _KV_Put_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PutRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(KVServer).Put(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(KVServer).Put(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.KV/Put",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVServer).Put(ctx, req.(*PutRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _KV_DeleteRange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _KV_DeleteRange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeleteRangeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(KVServer).DeleteRange(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(KVServer).DeleteRange(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.KV/DeleteRange",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVServer).DeleteRange(ctx, req.(*DeleteRangeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _KV_Txn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _KV_Txn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TxnRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(KVServer).Txn(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(KVServer).Txn(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.KV/Txn",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVServer).Txn(ctx, req.(*TxnRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _KV_Compact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _KV_Compact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CompactionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(KVServer).Compact(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(KVServer).Compact(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.KV/Compact",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVServer).Compact(ctx, req.(*CompactionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 var _KV_serviceDesc = grpc.ServiceDesc{
@@ -1856,16 +2382,18 @@ var _KV_serviceDesc = grpc.ServiceDesc{
 			Handler:    _KV_Compact_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: fileDescriptorRpc,
 }
 
 // Client API for Watch service
 
 type WatchClient interface {
-	// Watch watches the events happening or happened. Both input and output
-	// are stream. One watch rpc can watch for multiple keys or prefixs and
-	// get a stream of events. The whole events history can be watched unless
-	// compacted.
+	// Watch watches for events happening or that have happened. Both input and output
+	// are streams; the input stream is for creating and canceling watchers and the output
+	// stream sends events. One watch RPC can watch on multiple key ranges, streaming events
+	// for several watches at once. The entire event history can be watched starting from the
+	// last compaction revision.
 	Watch(ctx context.Context, opts ...grpc.CallOption) (Watch_WatchClient, error)
 }
 
@@ -1911,10 +2439,11 @@ func (x *watchWatchClient) Recv() (*WatchResponse, error) {
 // Server API for Watch service
 
 type WatchServer interface {
-	// Watch watches the events happening or happened. Both input and output
-	// are stream. One watch rpc can watch for multiple keys or prefixs and
-	// get a stream of events. The whole events history can be watched unless
-	// compacted.
+	// Watch watches for events happening or that have happened. Both input and output
+	// are streams; the input stream is for creating and canceling watchers and the output
+	// stream sends events. One watch RPC can watch on multiple key ranges, streaming events
+	// for several watches at once. The entire event history can be watched starting from the
+	// last compaction revision.
 	Watch(Watch_WatchServer) error
 }
 
@@ -1960,20 +2489,23 @@ var _Watch_serviceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
+	Metadata: fileDescriptorRpc,
 }
 
 // Client API for Lease service
 
 type LeaseClient interface {
-	// LeaseGrant creates a lease. A lease has a TTL. The lease will expire if the
-	// server does not receive a keepAlive within TTL from the lease holder.
-	// All keys attached to the lease will be expired and deleted if the lease expires.
-	// The key expiration generates an event in event history.
+	// LeaseGrant creates a lease which expires if the server does not receive a keepAlive
+	// within a given time to live period. All keys attached to the lease will be expired and
+	// deleted if the lease expires. Each expired key generates a delete event in the event history.
 	LeaseGrant(ctx context.Context, in *LeaseGrantRequest, opts ...grpc.CallOption) (*LeaseGrantResponse, error)
-	// LeaseRevoke revokes a lease. All the key attached to the lease will be expired and deleted.
+	// LeaseRevoke revokes a lease. All keys attached to the lease will expire and be deleted.
 	LeaseRevoke(ctx context.Context, in *LeaseRevokeRequest, opts ...grpc.CallOption) (*LeaseRevokeResponse, error)
-	// KeepAlive keeps the lease alive.
+	// LeaseKeepAlive keeps the lease alive by streaming keep alive requests from the client
+	// to the server and streaming keep alive responses from the server to the client.
 	LeaseKeepAlive(ctx context.Context, opts ...grpc.CallOption) (Lease_LeaseKeepAliveClient, error)
+	// LeaseTimeToLive retrieves lease information.
+	LeaseTimeToLive(ctx context.Context, in *LeaseTimeToLiveRequest, opts ...grpc.CallOption) (*LeaseTimeToLiveResponse, error)
 }
 
 type leaseClient struct {
@@ -2033,46 +2565,69 @@ func (x *leaseLeaseKeepAliveClient) Recv() (*LeaseKeepAliveResponse, error) {
 	return m, nil
 }
 
+func (c *leaseClient) LeaseTimeToLive(ctx context.Context, in *LeaseTimeToLiveRequest, opts ...grpc.CallOption) (*LeaseTimeToLiveResponse, error) {
+	out := new(LeaseTimeToLiveResponse)
+	err := grpc.Invoke(ctx, "/etcdserverpb.Lease/LeaseTimeToLive", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for Lease service
 
 type LeaseServer interface {
-	// LeaseGrant creates a lease. A lease has a TTL. The lease will expire if the
-	// server does not receive a keepAlive within TTL from the lease holder.
-	// All keys attached to the lease will be expired and deleted if the lease expires.
-	// The key expiration generates an event in event history.
+	// LeaseGrant creates a lease which expires if the server does not receive a keepAlive
+	// within a given time to live period. All keys attached to the lease will be expired and
+	// deleted if the lease expires. Each expired key generates a delete event in the event history.
 	LeaseGrant(context.Context, *LeaseGrantRequest) (*LeaseGrantResponse, error)
-	// LeaseRevoke revokes a lease. All the key attached to the lease will be expired and deleted.
+	// LeaseRevoke revokes a lease. All keys attached to the lease will expire and be deleted.
 	LeaseRevoke(context.Context, *LeaseRevokeRequest) (*LeaseRevokeResponse, error)
-	// KeepAlive keeps the lease alive.
+	// LeaseKeepAlive keeps the lease alive by streaming keep alive requests from the client
+	// to the server and streaming keep alive responses from the server to the client.
 	LeaseKeepAlive(Lease_LeaseKeepAliveServer) error
+	// LeaseTimeToLive retrieves lease information.
+	LeaseTimeToLive(context.Context, *LeaseTimeToLiveRequest) (*LeaseTimeToLiveResponse, error)
 }
 
 func RegisterLeaseServer(s *grpc.Server, srv LeaseServer) {
 	s.RegisterService(&_Lease_serviceDesc, srv)
 }
 
-func _Lease_LeaseGrant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Lease_LeaseGrant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(LeaseGrantRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(LeaseServer).LeaseGrant(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(LeaseServer).LeaseGrant(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Lease/LeaseGrant",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeaseServer).LeaseGrant(ctx, req.(*LeaseGrantRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Lease_LeaseRevoke_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Lease_LeaseRevoke_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(LeaseRevokeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(LeaseServer).LeaseRevoke(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(LeaseServer).LeaseRevoke(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Lease/LeaseRevoke",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeaseServer).LeaseRevoke(ctx, req.(*LeaseRevokeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Lease_LeaseKeepAlive_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -2101,6 +2656,24 @@ func (x *leaseLeaseKeepAliveServer) Recv() (*LeaseKeepAliveRequest, error) {
 	return m, nil
 }
 
+func _Lease_LeaseTimeToLive_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LeaseTimeToLiveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LeaseServer).LeaseTimeToLive(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Lease/LeaseTimeToLive",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeaseServer).LeaseTimeToLive(ctx, req.(*LeaseTimeToLiveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _Lease_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "etcdserverpb.Lease",
 	HandlerType: (*LeaseServer)(nil),
@@ -2113,6 +2686,10 @@ var _Lease_serviceDesc = grpc.ServiceDesc{
 			MethodName: "LeaseRevoke",
 			Handler:    _Lease_LeaseRevoke_Handler,
 		},
+		{
+			MethodName: "LeaseTimeToLive",
+			Handler:    _Lease_LeaseTimeToLive_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -2122,6 +2699,7 @@ var _Lease_serviceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
+	Metadata: fileDescriptorRpc,
 }
 
 // Client API for Cluster service
@@ -2198,52 +2776,76 @@ func RegisterClusterServer(s *grpc.Server, srv ClusterServer) {
 	s.RegisterService(&_Cluster_serviceDesc, srv)
 }
 
-func _Cluster_MemberAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Cluster_MemberAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MemberAddRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(ClusterServer).MemberAdd(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(ClusterServer).MemberAdd(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Cluster/MemberAdd",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServer).MemberAdd(ctx, req.(*MemberAddRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Cluster_MemberRemove_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Cluster_MemberRemove_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MemberRemoveRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(ClusterServer).MemberRemove(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(ClusterServer).MemberRemove(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Cluster/MemberRemove",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServer).MemberRemove(ctx, req.(*MemberRemoveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Cluster_MemberUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Cluster_MemberUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MemberUpdateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(ClusterServer).MemberUpdate(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(ClusterServer).MemberUpdate(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Cluster/MemberUpdate",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServer).MemberUpdate(ctx, req.(*MemberUpdateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Cluster_MemberList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Cluster_MemberList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MemberListRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(ClusterServer).MemberList(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(ClusterServer).MemberList(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Cluster/MemberList",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServer).MemberList(ctx, req.(*MemberListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 var _Cluster_serviceDesc = grpc.ServiceDesc{
@@ -2267,7 +2869,8 @@ var _Cluster_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Cluster_MemberList_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: fileDescriptorRpc,
 }
 
 // Client API for Maintenance service
@@ -2277,11 +2880,14 @@ type MaintenanceClient interface {
 	Alarm(ctx context.Context, in *AlarmRequest, opts ...grpc.CallOption) (*AlarmResponse, error)
 	// Status gets the status of the member.
 	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	// Defragment defragments a member's backend database to recover storage space.
 	Defragment(ctx context.Context, in *DefragmentRequest, opts ...grpc.CallOption) (*DefragmentResponse, error)
 	// Hash returns the hash of the local KV state for consistency checking purpose.
 	// This is designed for testing; do not use this in production when there
 	// are ongoing transactions.
 	Hash(ctx context.Context, in *HashRequest, opts ...grpc.CallOption) (*HashResponse, error)
+	// Snapshot sends a snapshot of the entire backend from a member over a stream to a client.
+	Snapshot(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (Maintenance_SnapshotClient, error)
 }
 
 type maintenanceClient struct {
@@ -2328,6 +2934,38 @@ func (c *maintenanceClient) Hash(ctx context.Context, in *HashRequest, opts ...g
 	return out, nil
 }
 
+func (c *maintenanceClient) Snapshot(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (Maintenance_SnapshotClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_Maintenance_serviceDesc.Streams[0], c.cc, "/etcdserverpb.Maintenance/Snapshot", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &maintenanceSnapshotClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Maintenance_SnapshotClient interface {
+	Recv() (*SnapshotResponse, error)
+	grpc.ClientStream
+}
+
+type maintenanceSnapshotClient struct {
+	grpc.ClientStream
+}
+
+func (x *maintenanceSnapshotClient) Recv() (*SnapshotResponse, error) {
+	m := new(SnapshotResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // Server API for Maintenance service
 
 type MaintenanceServer interface {
@@ -2335,63 +2973,111 @@ type MaintenanceServer interface {
 	Alarm(context.Context, *AlarmRequest) (*AlarmResponse, error)
 	// Status gets the status of the member.
 	Status(context.Context, *StatusRequest) (*StatusResponse, error)
+	// Defragment defragments a member's backend database to recover storage space.
 	Defragment(context.Context, *DefragmentRequest) (*DefragmentResponse, error)
 	// Hash returns the hash of the local KV state for consistency checking purpose.
 	// This is designed for testing; do not use this in production when there
 	// are ongoing transactions.
 	Hash(context.Context, *HashRequest) (*HashResponse, error)
+	// Snapshot sends a snapshot of the entire backend from a member over a stream to a client.
+	Snapshot(*SnapshotRequest, Maintenance_SnapshotServer) error
 }
 
 func RegisterMaintenanceServer(s *grpc.Server, srv MaintenanceServer) {
 	s.RegisterService(&_Maintenance_serviceDesc, srv)
 }
 
-func _Maintenance_Alarm_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Maintenance_Alarm_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AlarmRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(MaintenanceServer).Alarm(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(MaintenanceServer).Alarm(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Maintenance/Alarm",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MaintenanceServer).Alarm(ctx, req.(*AlarmRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Maintenance_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Maintenance_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StatusRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(MaintenanceServer).Status(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(MaintenanceServer).Status(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Maintenance/Status",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MaintenanceServer).Status(ctx, req.(*StatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Maintenance_Defragment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Maintenance_Defragment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DefragmentRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(MaintenanceServer).Defragment(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(MaintenanceServer).Defragment(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Maintenance/Defragment",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MaintenanceServer).Defragment(ctx, req.(*DefragmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Maintenance_Hash_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Maintenance_Hash_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HashRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(MaintenanceServer).Hash(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(MaintenanceServer).Hash(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Maintenance/Hash",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MaintenanceServer).Hash(ctx, req.(*HashRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Maintenance_Snapshot_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SnapshotRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(MaintenanceServer).Snapshot(m, &maintenanceSnapshotServer{stream})
+}
+
+type Maintenance_SnapshotServer interface {
+	Send(*SnapshotResponse) error
+	grpc.ServerStream
+}
+
+type maintenanceSnapshotServer struct {
+	grpc.ServerStream
+}
+
+func (x *maintenanceSnapshotServer) Send(m *SnapshotResponse) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 var _Maintenance_serviceDesc = grpc.ServiceDesc{
@@ -2415,7 +3101,14 @@ var _Maintenance_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Maintenance_Hash_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Snapshot",
+			Handler:       _Maintenance_Snapshot_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: fileDescriptorRpc,
 }
 
 // Client API for Auth service
@@ -2425,30 +3118,34 @@ type AuthClient interface {
 	AuthEnable(ctx context.Context, in *AuthEnableRequest, opts ...grpc.CallOption) (*AuthEnableResponse, error)
 	// AuthDisable disables authentication.
 	AuthDisable(ctx context.Context, in *AuthDisableRequest, opts ...grpc.CallOption) (*AuthDisableResponse, error)
-	// Authenticate processes authenticate request.
+	// Authenticate processes an authenticate request.
 	Authenticate(ctx context.Context, in *AuthenticateRequest, opts ...grpc.CallOption) (*AuthenticateResponse, error)
 	// UserAdd adds a new user.
 	UserAdd(ctx context.Context, in *AuthUserAddRequest, opts ...grpc.CallOption) (*AuthUserAddResponse, error)
-	// UserGet gets a detailed information of a user or lists entire users.
+	// UserGet gets detailed user information.
 	UserGet(ctx context.Context, in *AuthUserGetRequest, opts ...grpc.CallOption) (*AuthUserGetResponse, error)
+	// UserList gets a list of all users.
+	UserList(ctx context.Context, in *AuthUserListRequest, opts ...grpc.CallOption) (*AuthUserListResponse, error)
 	// UserDelete deletes a specified user.
 	UserDelete(ctx context.Context, in *AuthUserDeleteRequest, opts ...grpc.CallOption) (*AuthUserDeleteResponse, error)
-	// UserChangePassword changes password of a specified user.
+	// UserChangePassword changes the password of a specified user.
 	UserChangePassword(ctx context.Context, in *AuthUserChangePasswordRequest, opts ...grpc.CallOption) (*AuthUserChangePasswordResponse, error)
 	// UserGrant grants a role to a specified user.
-	UserGrant(ctx context.Context, in *AuthUserGrantRequest, opts ...grpc.CallOption) (*AuthUserGrantResponse, error)
-	// UserRevoke revokes a role of specified user.
-	UserRevoke(ctx context.Context, in *AuthUserRevokeRequest, opts ...grpc.CallOption) (*AuthUserRevokeResponse, error)
+	UserGrantRole(ctx context.Context, in *AuthUserGrantRoleRequest, opts ...grpc.CallOption) (*AuthUserGrantRoleResponse, error)
+	// UserRevokeRole revokes a role of specified user.
+	UserRevokeRole(ctx context.Context, in *AuthUserRevokeRoleRequest, opts ...grpc.CallOption) (*AuthUserRevokeRoleResponse, error)
 	// RoleAdd adds a new role.
 	RoleAdd(ctx context.Context, in *AuthRoleAddRequest, opts ...grpc.CallOption) (*AuthRoleAddResponse, error)
-	// RoleGet gets a detailed information of a role or lists entire roles.
+	// RoleGet gets detailed role information.
 	RoleGet(ctx context.Context, in *AuthRoleGetRequest, opts ...grpc.CallOption) (*AuthRoleGetResponse, error)
+	// RoleList gets lists of all roles.
+	RoleList(ctx context.Context, in *AuthRoleListRequest, opts ...grpc.CallOption) (*AuthRoleListResponse, error)
 	// RoleDelete deletes a specified role.
 	RoleDelete(ctx context.Context, in *AuthRoleDeleteRequest, opts ...grpc.CallOption) (*AuthRoleDeleteResponse, error)
-	// RoleGrant grants a permission of a specified key or range to a specified role.
-	RoleGrant(ctx context.Context, in *AuthRoleGrantRequest, opts ...grpc.CallOption) (*AuthRoleGrantResponse, error)
-	// RoleRevoke revokes a key or range permission of a specified role.
-	RoleRevoke(ctx context.Context, in *AuthRoleRevokeRequest, opts ...grpc.CallOption) (*AuthRoleRevokeResponse, error)
+	// RoleGrantPermission grants a permission of a specified key or range to a specified role.
+	RoleGrantPermission(ctx context.Context, in *AuthRoleGrantPermissionRequest, opts ...grpc.CallOption) (*AuthRoleGrantPermissionResponse, error)
+	// RoleRevokePermission revokes a key or range permission of a specified role.
+	RoleRevokePermission(ctx context.Context, in *AuthRoleRevokePermissionRequest, opts ...grpc.CallOption) (*AuthRoleRevokePermissionResponse, error)
 }
 
 type authClient struct {
@@ -2504,6 +3201,15 @@ func (c *authClient) UserGet(ctx context.Context, in *AuthUserGetRequest, opts .
 	return out, nil
 }
 
+func (c *authClient) UserList(ctx context.Context, in *AuthUserListRequest, opts ...grpc.CallOption) (*AuthUserListResponse, error) {
+	out := new(AuthUserListResponse)
+	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/UserList", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *authClient) UserDelete(ctx context.Context, in *AuthUserDeleteRequest, opts ...grpc.CallOption) (*AuthUserDeleteResponse, error) {
 	out := new(AuthUserDeleteResponse)
 	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/UserDelete", in, out, c.cc, opts...)
@@ -2522,18 +3228,18 @@ func (c *authClient) UserChangePassword(ctx context.Context, in *AuthUserChangeP
 	return out, nil
 }
 
-func (c *authClient) UserGrant(ctx context.Context, in *AuthUserGrantRequest, opts ...grpc.CallOption) (*AuthUserGrantResponse, error) {
-	out := new(AuthUserGrantResponse)
-	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/UserGrant", in, out, c.cc, opts...)
+func (c *authClient) UserGrantRole(ctx context.Context, in *AuthUserGrantRoleRequest, opts ...grpc.CallOption) (*AuthUserGrantRoleResponse, error) {
+	out := new(AuthUserGrantRoleResponse)
+	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/UserGrantRole", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *authClient) UserRevoke(ctx context.Context, in *AuthUserRevokeRequest, opts ...grpc.CallOption) (*AuthUserRevokeResponse, error) {
-	out := new(AuthUserRevokeResponse)
-	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/UserRevoke", in, out, c.cc, opts...)
+func (c *authClient) UserRevokeRole(ctx context.Context, in *AuthUserRevokeRoleRequest, opts ...grpc.CallOption) (*AuthUserRevokeRoleResponse, error) {
+	out := new(AuthUserRevokeRoleResponse)
+	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/UserRevokeRole", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2558,6 +3264,15 @@ func (c *authClient) RoleGet(ctx context.Context, in *AuthRoleGetRequest, opts .
 	return out, nil
 }
 
+func (c *authClient) RoleList(ctx context.Context, in *AuthRoleListRequest, opts ...grpc.CallOption) (*AuthRoleListResponse, error) {
+	out := new(AuthRoleListResponse)
+	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/RoleList", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *authClient) RoleDelete(ctx context.Context, in *AuthRoleDeleteRequest, opts ...grpc.CallOption) (*AuthRoleDeleteResponse, error) {
 	out := new(AuthRoleDeleteResponse)
 	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/RoleDelete", in, out, c.cc, opts...)
@@ -2567,18 +3282,18 @@ func (c *authClient) RoleDelete(ctx context.Context, in *AuthRoleDeleteRequest, 
 	return out, nil
 }
 
-func (c *authClient) RoleGrant(ctx context.Context, in *AuthRoleGrantRequest, opts ...grpc.CallOption) (*AuthRoleGrantResponse, error) {
-	out := new(AuthRoleGrantResponse)
-	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/RoleGrant", in, out, c.cc, opts...)
+func (c *authClient) RoleGrantPermission(ctx context.Context, in *AuthRoleGrantPermissionRequest, opts ...grpc.CallOption) (*AuthRoleGrantPermissionResponse, error) {
+	out := new(AuthRoleGrantPermissionResponse)
+	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/RoleGrantPermission", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *authClient) RoleRevoke(ctx context.Context, in *AuthRoleRevokeRequest, opts ...grpc.CallOption) (*AuthRoleRevokeResponse, error) {
-	out := new(AuthRoleRevokeResponse)
-	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/RoleRevoke", in, out, c.cc, opts...)
+func (c *authClient) RoleRevokePermission(ctx context.Context, in *AuthRoleRevokePermissionRequest, opts ...grpc.CallOption) (*AuthRoleRevokePermissionResponse, error) {
+	out := new(AuthRoleRevokePermissionResponse)
+	err := grpc.Invoke(ctx, "/etcdserverpb.Auth/RoleRevokePermission", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2592,202 +3307,326 @@ type AuthServer interface {
 	AuthEnable(context.Context, *AuthEnableRequest) (*AuthEnableResponse, error)
 	// AuthDisable disables authentication.
 	AuthDisable(context.Context, *AuthDisableRequest) (*AuthDisableResponse, error)
-	// Authenticate processes authenticate request.
+	// Authenticate processes an authenticate request.
 	Authenticate(context.Context, *AuthenticateRequest) (*AuthenticateResponse, error)
 	// UserAdd adds a new user.
 	UserAdd(context.Context, *AuthUserAddRequest) (*AuthUserAddResponse, error)
-	// UserGet gets a detailed information of a user or lists entire users.
+	// UserGet gets detailed user information.
 	UserGet(context.Context, *AuthUserGetRequest) (*AuthUserGetResponse, error)
+	// UserList gets a list of all users.
+	UserList(context.Context, *AuthUserListRequest) (*AuthUserListResponse, error)
 	// UserDelete deletes a specified user.
 	UserDelete(context.Context, *AuthUserDeleteRequest) (*AuthUserDeleteResponse, error)
-	// UserChangePassword changes password of a specified user.
+	// UserChangePassword changes the password of a specified user.
 	UserChangePassword(context.Context, *AuthUserChangePasswordRequest) (*AuthUserChangePasswordResponse, error)
 	// UserGrant grants a role to a specified user.
-	UserGrant(context.Context, *AuthUserGrantRequest) (*AuthUserGrantResponse, error)
-	// UserRevoke revokes a role of specified user.
-	UserRevoke(context.Context, *AuthUserRevokeRequest) (*AuthUserRevokeResponse, error)
+	UserGrantRole(context.Context, *AuthUserGrantRoleRequest) (*AuthUserGrantRoleResponse, error)
+	// UserRevokeRole revokes a role of specified user.
+	UserRevokeRole(context.Context, *AuthUserRevokeRoleRequest) (*AuthUserRevokeRoleResponse, error)
 	// RoleAdd adds a new role.
 	RoleAdd(context.Context, *AuthRoleAddRequest) (*AuthRoleAddResponse, error)
-	// RoleGet gets a detailed information of a role or lists entire roles.
+	// RoleGet gets detailed role information.
 	RoleGet(context.Context, *AuthRoleGetRequest) (*AuthRoleGetResponse, error)
+	// RoleList gets lists of all roles.
+	RoleList(context.Context, *AuthRoleListRequest) (*AuthRoleListResponse, error)
 	// RoleDelete deletes a specified role.
 	RoleDelete(context.Context, *AuthRoleDeleteRequest) (*AuthRoleDeleteResponse, error)
-	// RoleGrant grants a permission of a specified key or range to a specified role.
-	RoleGrant(context.Context, *AuthRoleGrantRequest) (*AuthRoleGrantResponse, error)
-	// RoleRevoke revokes a key or range permission of a specified role.
-	RoleRevoke(context.Context, *AuthRoleRevokeRequest) (*AuthRoleRevokeResponse, error)
+	// RoleGrantPermission grants a permission of a specified key or range to a specified role.
+	RoleGrantPermission(context.Context, *AuthRoleGrantPermissionRequest) (*AuthRoleGrantPermissionResponse, error)
+	// RoleRevokePermission revokes a key or range permission of a specified role.
+	RoleRevokePermission(context.Context, *AuthRoleRevokePermissionRequest) (*AuthRoleRevokePermissionResponse, error)
 }
 
 func RegisterAuthServer(s *grpc.Server, srv AuthServer) {
 	s.RegisterService(&_Auth_serviceDesc, srv)
 }
 
-func _Auth_AuthEnable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_AuthEnable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthEnableRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).AuthEnable(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).AuthEnable(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/AuthEnable",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).AuthEnable(ctx, req.(*AuthEnableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_AuthDisable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_AuthDisable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthDisableRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).AuthDisable(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).AuthDisable(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/AuthDisable",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).AuthDisable(ctx, req.(*AuthDisableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_Authenticate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_Authenticate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthenticateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).Authenticate(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).Authenticate(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/Authenticate",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).Authenticate(ctx, req.(*AuthenticateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_UserAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_UserAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthUserAddRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).UserAdd(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).UserAdd(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/UserAdd",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).UserAdd(ctx, req.(*AuthUserAddRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_UserGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_UserGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthUserGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).UserGet(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).UserGet(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/UserGet",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).UserGet(ctx, req.(*AuthUserGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_UserDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_UserList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthUserListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServer).UserList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/UserList",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).UserList(ctx, req.(*AuthUserListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Auth_UserDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthUserDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).UserDelete(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).UserDelete(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/UserDelete",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).UserDelete(ctx, req.(*AuthUserDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_UserChangePassword_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_UserChangePassword_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthUserChangePasswordRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).UserChangePassword(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).UserChangePassword(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/UserChangePassword",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).UserChangePassword(ctx, req.(*AuthUserChangePasswordRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_UserGrant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
-	in := new(AuthUserGrantRequest)
+func _Auth_UserGrantRole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthUserGrantRoleRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).UserGrant(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).UserGrantRole(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/UserGrantRole",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).UserGrantRole(ctx, req.(*AuthUserGrantRoleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_UserRevoke_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
-	in := new(AuthUserRevokeRequest)
+func _Auth_UserRevokeRole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthUserRevokeRoleRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).UserRevoke(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).UserRevokeRole(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/UserRevokeRole",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).UserRevokeRole(ctx, req.(*AuthUserRevokeRoleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_RoleAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_RoleAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthRoleAddRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).RoleAdd(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).RoleAdd(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/RoleAdd",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).RoleAdd(ctx, req.(*AuthRoleAddRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_RoleGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_RoleGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthRoleGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).RoleGet(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).RoleGet(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/RoleGet",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).RoleGet(ctx, req.(*AuthRoleGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_RoleDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Auth_RoleList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthRoleListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServer).RoleList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/RoleList",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).RoleList(ctx, req.(*AuthRoleListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Auth_RoleDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthRoleDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).RoleDelete(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).RoleDelete(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/RoleDelete",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).RoleDelete(ctx, req.(*AuthRoleDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_RoleGrant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
-	in := new(AuthRoleGrantRequest)
+func _Auth_RoleGrantPermission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthRoleGrantPermissionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).RoleGrant(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).RoleGrantPermission(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/RoleGrantPermission",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).RoleGrantPermission(ctx, req.(*AuthRoleGrantPermissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-func _Auth_RoleRevoke_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
-	in := new(AuthRoleRevokeRequest)
+func _Auth_RoleRevokePermission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthRoleRevokePermissionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(AuthServer).RoleRevoke(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(AuthServer).RoleRevokePermission(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/etcdserverpb.Auth/RoleRevokePermission",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).RoleRevokePermission(ctx, req.(*AuthRoleRevokePermissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 var _Auth_serviceDesc = grpc.ServiceDesc{
@@ -2815,6 +3654,10 @@ var _Auth_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Auth_UserGet_Handler,
 		},
 		{
+			MethodName: "UserList",
+			Handler:    _Auth_UserList_Handler,
+		},
+		{
 			MethodName: "UserDelete",
 			Handler:    _Auth_UserDelete_Handler,
 		},
@@ -2823,12 +3666,12 @@ var _Auth_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Auth_UserChangePassword_Handler,
 		},
 		{
-			MethodName: "UserGrant",
-			Handler:    _Auth_UserGrant_Handler,
+			MethodName: "UserGrantRole",
+			Handler:    _Auth_UserGrantRole_Handler,
 		},
 		{
-			MethodName: "UserRevoke",
-			Handler:    _Auth_UserRevoke_Handler,
+			MethodName: "UserRevokeRole",
+			Handler:    _Auth_UserRevokeRole_Handler,
 		},
 		{
 			MethodName: "RoleAdd",
@@ -2839,19 +3682,24 @@ var _Auth_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Auth_RoleGet_Handler,
 		},
 		{
+			MethodName: "RoleList",
+			Handler:    _Auth_RoleList_Handler,
+		},
+		{
 			MethodName: "RoleDelete",
 			Handler:    _Auth_RoleDelete_Handler,
 		},
 		{
-			MethodName: "RoleGrant",
-			Handler:    _Auth_RoleGrant_Handler,
+			MethodName: "RoleGrantPermission",
+			Handler:    _Auth_RoleGrantPermission_Handler,
 		},
 		{
-			MethodName: "RoleRevoke",
-			Handler:    _Auth_RoleRevoke_Handler,
+			MethodName: "RoleRevokePermission",
+			Handler:    _Auth_RoleRevokePermission_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: fileDescriptorRpc,
 }
 
 func (m *ResponseHeader) Marshal() (data []byte, err error) {
@@ -2907,21 +3755,17 @@ func (m *RangeRequest) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.Key != nil {
-		if len(m.Key) > 0 {
-			data[i] = 0xa
-			i++
-			i = encodeVarintRpc(data, i, uint64(len(m.Key)))
-			i += copy(data[i:], m.Key)
-		}
+	if len(m.Key) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Key)))
+		i += copy(data[i:], m.Key)
 	}
-	if m.RangeEnd != nil {
-		if len(m.RangeEnd) > 0 {
-			data[i] = 0x12
-			i++
-			i = encodeVarintRpc(data, i, uint64(len(m.RangeEnd)))
-			i += copy(data[i:], m.RangeEnd)
-		}
+	if len(m.RangeEnd) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.RangeEnd)))
+		i += copy(data[i:], m.RangeEnd)
 	}
 	if m.Limit != 0 {
 		data[i] = 0x18
@@ -2952,6 +3796,46 @@ func (m *RangeRequest) MarshalTo(data []byte) (int, error) {
 			data[i] = 0
 		}
 		i++
+	}
+	if m.KeysOnly {
+		data[i] = 0x40
+		i++
+		if m.KeysOnly {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
+	}
+	if m.CountOnly {
+		data[i] = 0x48
+		i++
+		if m.CountOnly {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
+	}
+	if m.MinModRevision != 0 {
+		data[i] = 0x50
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.MinModRevision))
+	}
+	if m.MaxModRevision != 0 {
+		data[i] = 0x58
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.MaxModRevision))
+	}
+	if m.MinCreateRevision != 0 {
+		data[i] = 0x60
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.MinCreateRevision))
+	}
+	if m.MaxCreateRevision != 0 {
+		data[i] = 0x68
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.MaxCreateRevision))
 	}
 	return i, nil
 }
@@ -3003,6 +3887,11 @@ func (m *RangeResponse) MarshalTo(data []byte) (int, error) {
 		}
 		i++
 	}
+	if m.Count != 0 {
+		data[i] = 0x20
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.Count))
+	}
 	return i, nil
 }
 
@@ -3021,26 +3910,32 @@ func (m *PutRequest) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.Key != nil {
-		if len(m.Key) > 0 {
-			data[i] = 0xa
-			i++
-			i = encodeVarintRpc(data, i, uint64(len(m.Key)))
-			i += copy(data[i:], m.Key)
-		}
+	if len(m.Key) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Key)))
+		i += copy(data[i:], m.Key)
 	}
-	if m.Value != nil {
-		if len(m.Value) > 0 {
-			data[i] = 0x12
-			i++
-			i = encodeVarintRpc(data, i, uint64(len(m.Value)))
-			i += copy(data[i:], m.Value)
-		}
+	if len(m.Value) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Value)))
+		i += copy(data[i:], m.Value)
 	}
 	if m.Lease != 0 {
 		data[i] = 0x18
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Lease))
+	}
+	if m.PrevKv {
+		data[i] = 0x20
+		i++
+		if m.PrevKv {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
 	}
 	return i, nil
 }
@@ -3070,6 +3965,16 @@ func (m *PutResponse) MarshalTo(data []byte) (int, error) {
 		}
 		i += n2
 	}
+	if m.PrevKv != nil {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.PrevKv.Size()))
+		n3, err := m.PrevKv.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n3
+	}
 	return i, nil
 }
 
@@ -3088,21 +3993,27 @@ func (m *DeleteRangeRequest) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.Key != nil {
-		if len(m.Key) > 0 {
-			data[i] = 0xa
-			i++
-			i = encodeVarintRpc(data, i, uint64(len(m.Key)))
-			i += copy(data[i:], m.Key)
-		}
+	if len(m.Key) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Key)))
+		i += copy(data[i:], m.Key)
 	}
-	if m.RangeEnd != nil {
-		if len(m.RangeEnd) > 0 {
-			data[i] = 0x12
-			i++
-			i = encodeVarintRpc(data, i, uint64(len(m.RangeEnd)))
-			i += copy(data[i:], m.RangeEnd)
+	if len(m.RangeEnd) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.RangeEnd)))
+		i += copy(data[i:], m.RangeEnd)
+	}
+	if m.PrevKv {
+		data[i] = 0x18
+		i++
+		if m.PrevKv {
+			data[i] = 1
+		} else {
+			data[i] = 0
 		}
+		i++
 	}
 	return i, nil
 }
@@ -3126,21 +4037,33 @@ func (m *DeleteRangeResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n3, err := m.Header.MarshalTo(data[i:])
+		n4, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n3
+		i += n4
 	}
 	if m.Deleted != 0 {
 		data[i] = 0x10
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Deleted))
 	}
+	if len(m.PrevKvs) > 0 {
+		for _, msg := range m.PrevKvs {
+			data[i] = 0x1a
+			i++
+			i = encodeVarintRpc(data, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(data[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
 	return i, nil
 }
 
-func (m *RequestUnion) Marshal() (data []byte, err error) {
+func (m *RequestOp) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -3150,42 +4073,28 @@ func (m *RequestUnion) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *RequestUnion) MarshalTo(data []byte) (int, error) {
+func (m *RequestOp) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
 	if m.Request != nil {
-		nn4, err := m.Request.MarshalTo(data[i:])
+		nn5, err := m.Request.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += nn4
+		i += nn5
 	}
 	return i, nil
 }
 
-func (m *RequestUnion_RequestRange) MarshalTo(data []byte) (int, error) {
+func (m *RequestOp_RequestRange) MarshalTo(data []byte) (int, error) {
 	i := 0
 	if m.RequestRange != nil {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.RequestRange.Size()))
-		n5, err := m.RequestRange.MarshalTo(data[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n5
-	}
-	return i, nil
-}
-func (m *RequestUnion_RequestPut) MarshalTo(data []byte) (int, error) {
-	i := 0
-	if m.RequestPut != nil {
-		data[i] = 0x12
-		i++
-		i = encodeVarintRpc(data, i, uint64(m.RequestPut.Size()))
-		n6, err := m.RequestPut.MarshalTo(data[i:])
+		n6, err := m.RequestRange.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
@@ -3193,13 +4102,13 @@ func (m *RequestUnion_RequestPut) MarshalTo(data []byte) (int, error) {
 	}
 	return i, nil
 }
-func (m *RequestUnion_RequestDeleteRange) MarshalTo(data []byte) (int, error) {
+func (m *RequestOp_RequestPut) MarshalTo(data []byte) (int, error) {
 	i := 0
-	if m.RequestDeleteRange != nil {
-		data[i] = 0x1a
+	if m.RequestPut != nil {
+		data[i] = 0x12
 		i++
-		i = encodeVarintRpc(data, i, uint64(m.RequestDeleteRange.Size()))
-		n7, err := m.RequestDeleteRange.MarshalTo(data[i:])
+		i = encodeVarintRpc(data, i, uint64(m.RequestPut.Size()))
+		n7, err := m.RequestPut.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
@@ -3207,7 +4116,21 @@ func (m *RequestUnion_RequestDeleteRange) MarshalTo(data []byte) (int, error) {
 	}
 	return i, nil
 }
-func (m *ResponseUnion) Marshal() (data []byte, err error) {
+func (m *RequestOp_RequestDeleteRange) MarshalTo(data []byte) (int, error) {
+	i := 0
+	if m.RequestDeleteRange != nil {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.RequestDeleteRange.Size()))
+		n8, err := m.RequestDeleteRange.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n8
+	}
+	return i, nil
+}
+func (m *ResponseOp) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -3217,42 +4140,28 @@ func (m *ResponseUnion) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *ResponseUnion) MarshalTo(data []byte) (int, error) {
+func (m *ResponseOp) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
 	if m.Response != nil {
-		nn8, err := m.Response.MarshalTo(data[i:])
+		nn9, err := m.Response.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += nn8
+		i += nn9
 	}
 	return i, nil
 }
 
-func (m *ResponseUnion_ResponseRange) MarshalTo(data []byte) (int, error) {
+func (m *ResponseOp_ResponseRange) MarshalTo(data []byte) (int, error) {
 	i := 0
 	if m.ResponseRange != nil {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.ResponseRange.Size()))
-		n9, err := m.ResponseRange.MarshalTo(data[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n9
-	}
-	return i, nil
-}
-func (m *ResponseUnion_ResponsePut) MarshalTo(data []byte) (int, error) {
-	i := 0
-	if m.ResponsePut != nil {
-		data[i] = 0x12
-		i++
-		i = encodeVarintRpc(data, i, uint64(m.ResponsePut.Size()))
-		n10, err := m.ResponsePut.MarshalTo(data[i:])
+		n10, err := m.ResponseRange.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
@@ -3260,17 +4169,31 @@ func (m *ResponseUnion_ResponsePut) MarshalTo(data []byte) (int, error) {
 	}
 	return i, nil
 }
-func (m *ResponseUnion_ResponseDeleteRange) MarshalTo(data []byte) (int, error) {
+func (m *ResponseOp_ResponsePut) MarshalTo(data []byte) (int, error) {
+	i := 0
+	if m.ResponsePut != nil {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.ResponsePut.Size()))
+		n11, err := m.ResponsePut.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n11
+	}
+	return i, nil
+}
+func (m *ResponseOp_ResponseDeleteRange) MarshalTo(data []byte) (int, error) {
 	i := 0
 	if m.ResponseDeleteRange != nil {
 		data[i] = 0x1a
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.ResponseDeleteRange.Size()))
-		n11, err := m.ResponseDeleteRange.MarshalTo(data[i:])
+		n12, err := m.ResponseDeleteRange.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n11
+		i += n12
 	}
 	return i, nil
 }
@@ -3299,20 +4222,18 @@ func (m *Compare) MarshalTo(data []byte) (int, error) {
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Target))
 	}
-	if m.Key != nil {
-		if len(m.Key) > 0 {
-			data[i] = 0x1a
-			i++
-			i = encodeVarintRpc(data, i, uint64(len(m.Key)))
-			i += copy(data[i:], m.Key)
-		}
+	if len(m.Key) > 0 {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Key)))
+		i += copy(data[i:], m.Key)
 	}
 	if m.TargetUnion != nil {
-		nn12, err := m.TargetUnion.MarshalTo(data[i:])
+		nn13, err := m.TargetUnion.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += nn12
+		i += nn13
 	}
 	return i, nil
 }
@@ -3421,11 +4342,11 @@ func (m *TxnResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n13, err := m.Header.MarshalTo(data[i:])
+		n14, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n13
+		i += n14
 	}
 	if m.Succeeded {
 		data[i] = 0x10
@@ -3504,11 +4425,11 @@ func (m *CompactionResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n14, err := m.Header.MarshalTo(data[i:])
+		n15, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n14
+		i += n15
 	}
 	return i, nil
 }
@@ -3550,16 +4471,73 @@ func (m *HashResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n15, err := m.Header.MarshalTo(data[i:])
+		n16, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n15
+		i += n16
 	}
 	if m.Hash != 0 {
 		data[i] = 0x10
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Hash))
+	}
+	return i, nil
+}
+
+func (m *SnapshotRequest) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *SnapshotRequest) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	return i, nil
+}
+
+func (m *SnapshotResponse) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *SnapshotResponse) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Header != nil {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
+		n17, err := m.Header.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n17
+	}
+	if m.RemainingBytes != 0 {
+		data[i] = 0x10
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.RemainingBytes))
+	}
+	if len(m.Blob) > 0 {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Blob)))
+		i += copy(data[i:], m.Blob)
 	}
 	return i, nil
 }
@@ -3580,11 +4558,11 @@ func (m *WatchRequest) MarshalTo(data []byte) (int, error) {
 	var l int
 	_ = l
 	if m.RequestUnion != nil {
-		nn16, err := m.RequestUnion.MarshalTo(data[i:])
+		nn18, err := m.RequestUnion.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += nn16
+		i += nn18
 	}
 	return i, nil
 }
@@ -3595,11 +4573,11 @@ func (m *WatchRequest_CreateRequest) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.CreateRequest.Size()))
-		n17, err := m.CreateRequest.MarshalTo(data[i:])
+		n19, err := m.CreateRequest.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n17
+		i += n19
 	}
 	return i, nil
 }
@@ -3609,11 +4587,11 @@ func (m *WatchRequest_CancelRequest) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.CancelRequest.Size()))
-		n18, err := m.CancelRequest.MarshalTo(data[i:])
+		n20, err := m.CancelRequest.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n18
+		i += n20
 	}
 	return i, nil
 }
@@ -3632,21 +4610,17 @@ func (m *WatchCreateRequest) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.Key != nil {
-		if len(m.Key) > 0 {
-			data[i] = 0xa
-			i++
-			i = encodeVarintRpc(data, i, uint64(len(m.Key)))
-			i += copy(data[i:], m.Key)
-		}
+	if len(m.Key) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Key)))
+		i += copy(data[i:], m.Key)
 	}
-	if m.RangeEnd != nil {
-		if len(m.RangeEnd) > 0 {
-			data[i] = 0x12
-			i++
-			i = encodeVarintRpc(data, i, uint64(len(m.RangeEnd)))
-			i += copy(data[i:], m.RangeEnd)
-		}
+	if len(m.RangeEnd) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.RangeEnd)))
+		i += copy(data[i:], m.RangeEnd)
 	}
 	if m.StartRevision != 0 {
 		data[i] = 0x18
@@ -3657,6 +4631,23 @@ func (m *WatchCreateRequest) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x20
 		i++
 		if m.ProgressNotify {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
+	}
+	if len(m.Filters) > 0 {
+		for _, num := range m.Filters {
+			data[i] = 0x28
+			i++
+			i = encodeVarintRpc(data, i, uint64(num))
+		}
+	}
+	if m.PrevKv {
+		data[i] = 0x30
+		i++
+		if m.PrevKv {
 			data[i] = 1
 		} else {
 			data[i] = 0
@@ -3708,11 +4699,11 @@ func (m *WatchResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n19, err := m.Header.MarshalTo(data[i:])
+		n21, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n19
+		i += n21
 	}
 	if m.WatchId != 0 {
 		data[i] = 0x10
@@ -3806,11 +4797,11 @@ func (m *LeaseGrantResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n20, err := m.Header.MarshalTo(data[i:])
+		n22, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n20
+		i += n22
 	}
 	if m.ID != 0 {
 		data[i] = 0x10
@@ -3873,11 +4864,11 @@ func (m *LeaseRevokeResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n21, err := m.Header.MarshalTo(data[i:])
+		n23, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n21
+		i += n23
 	}
 	return i, nil
 }
@@ -3924,11 +4915,11 @@ func (m *LeaseKeepAliveResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n22, err := m.Header.MarshalTo(data[i:])
+		n24, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n22
+		i += n24
 	}
 	if m.ID != 0 {
 		data[i] = 0x10
@@ -3939,6 +4930,90 @@ func (m *LeaseKeepAliveResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x18
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.TTL))
+	}
+	return i, nil
+}
+
+func (m *LeaseTimeToLiveRequest) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *LeaseTimeToLiveRequest) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.ID != 0 {
+		data[i] = 0x8
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.ID))
+	}
+	if m.Keys {
+		data[i] = 0x10
+		i++
+		if m.Keys {
+			data[i] = 1
+		} else {
+			data[i] = 0
+		}
+		i++
+	}
+	return i, nil
+}
+
+func (m *LeaseTimeToLiveResponse) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *LeaseTimeToLiveResponse) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Header != nil {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
+		n25, err := m.Header.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n25
+	}
+	if m.ID != 0 {
+		data[i] = 0x10
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.ID))
+	}
+	if m.TTL != 0 {
+		data[i] = 0x18
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.TTL))
+	}
+	if m.GrantedTTL != 0 {
+		data[i] = 0x20
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.GrantedTTL))
+	}
+	if len(m.Keys) > 0 {
+		for _, b := range m.Keys {
+			data[i] = 0x2a
+			i++
+			i = encodeVarintRpc(data, i, uint64(len(b)))
+			i += copy(data[i:], b)
+		}
 	}
 	return i, nil
 }
@@ -3969,19 +5044,9 @@ func (m *Member) MarshalTo(data []byte) (int, error) {
 		i = encodeVarintRpc(data, i, uint64(len(m.Name)))
 		i += copy(data[i:], m.Name)
 	}
-	if m.IsLeader {
-		data[i] = 0x18
-		i++
-		if m.IsLeader {
-			data[i] = 1
-		} else {
-			data[i] = 0
-		}
-		i++
-	}
 	if len(m.PeerURLs) > 0 {
 		for _, s := range m.PeerURLs {
-			data[i] = 0x22
+			data[i] = 0x1a
 			i++
 			l = len(s)
 			for l >= 1<<7 {
@@ -3996,7 +5061,7 @@ func (m *Member) MarshalTo(data []byte) (int, error) {
 	}
 	if len(m.ClientURLs) > 0 {
 		for _, s := range m.ClientURLs {
-			data[i] = 0x2a
+			data[i] = 0x22
 			i++
 			l = len(s)
 			for l >= 1<<7 {
@@ -4064,21 +5129,21 @@ func (m *MemberAddResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n23, err := m.Header.MarshalTo(data[i:])
+		n26, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n23
+		i += n26
 	}
 	if m.Member != nil {
 		data[i] = 0x12
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Member.Size()))
-		n24, err := m.Member.MarshalTo(data[i:])
+		n27, err := m.Member.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n24
+		i += n27
 	}
 	return i, nil
 }
@@ -4125,11 +5190,11 @@ func (m *MemberRemoveResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n25, err := m.Header.MarshalTo(data[i:])
+		n28, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n25
+		i += n28
 	}
 	return i, nil
 }
@@ -4191,11 +5256,11 @@ func (m *MemberUpdateResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n26, err := m.Header.MarshalTo(data[i:])
+		n29, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n26
+		i += n29
 	}
 	return i, nil
 }
@@ -4237,11 +5302,11 @@ func (m *MemberListResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n27, err := m.Header.MarshalTo(data[i:])
+		n30, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n27
+		i += n30
 	}
 	if len(m.Members) > 0 {
 		for _, msg := range m.Members {
@@ -4295,11 +5360,11 @@ func (m *DefragmentResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n28, err := m.Header.MarshalTo(data[i:])
+		n31, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n28
+		i += n31
 	}
 	return i, nil
 }
@@ -4384,11 +5449,11 @@ func (m *AlarmResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n29, err := m.Header.MarshalTo(data[i:])
+		n32, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n29
+		i += n32
 	}
 	if len(m.Alarms) > 0 {
 		for _, msg := range m.Alarms {
@@ -4442,17 +5507,37 @@ func (m *StatusResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n30, err := m.Header.MarshalTo(data[i:])
+		n33, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n30
+		i += n33
 	}
 	if len(m.Version) > 0 {
 		data[i] = 0x12
 		i++
 		i = encodeVarintRpc(data, i, uint64(len(m.Version)))
 		i += copy(data[i:], m.Version)
+	}
+	if m.DbSize != 0 {
+		data[i] = 0x18
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.DbSize))
+	}
+	if m.Leader != 0 {
+		data[i] = 0x20
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.Leader))
+	}
+	if m.RaftIndex != 0 {
+		data[i] = 0x28
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.RaftIndex))
+	}
+	if m.RaftTerm != 0 {
+		data[i] = 0x30
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.RaftTerm))
 	}
 	return i, nil
 }
@@ -4508,6 +5593,18 @@ func (m *AuthenticateRequest) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Name) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Name)))
+		i += copy(data[i:], m.Name)
+	}
+	if len(m.Password) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Password)))
+		i += copy(data[i:], m.Password)
+	}
 	return i, nil
 }
 
@@ -4556,6 +5653,12 @@ func (m *AuthUserGetRequest) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Name) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Name)))
+		i += copy(data[i:], m.Name)
+	}
 	return i, nil
 }
 
@@ -4613,7 +5716,7 @@ func (m *AuthUserChangePasswordRequest) MarshalTo(data []byte) (int, error) {
 	return i, nil
 }
 
-func (m *AuthUserGrantRequest) Marshal() (data []byte, err error) {
+func (m *AuthUserGrantRoleRequest) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -4623,15 +5726,27 @@ func (m *AuthUserGrantRequest) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *AuthUserGrantRequest) MarshalTo(data []byte) (int, error) {
+func (m *AuthUserGrantRoleRequest) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
+	if len(m.User) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.User)))
+		i += copy(data[i:], m.User)
+	}
+	if len(m.Role) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Role)))
+		i += copy(data[i:], m.Role)
+	}
 	return i, nil
 }
 
-func (m *AuthUserRevokeRequest) Marshal() (data []byte, err error) {
+func (m *AuthUserRevokeRoleRequest) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -4641,11 +5756,23 @@ func (m *AuthUserRevokeRequest) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *AuthUserRevokeRequest) MarshalTo(data []byte) (int, error) {
+func (m *AuthUserRevokeRoleRequest) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
+	if len(m.Name) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Name)))
+		i += copy(data[i:], m.Name)
+	}
+	if len(m.Role) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Role)))
+		i += copy(data[i:], m.Role)
+	}
 	return i, nil
 }
 
@@ -4688,6 +5815,48 @@ func (m *AuthRoleGetRequest) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Role) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Role)))
+		i += copy(data[i:], m.Role)
+	}
+	return i, nil
+}
+
+func (m *AuthUserListRequest) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *AuthUserListRequest) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	return i, nil
+}
+
+func (m *AuthRoleListRequest) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *AuthRoleListRequest) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
 	return i, nil
 }
 
@@ -4706,10 +5875,16 @@ func (m *AuthRoleDeleteRequest) MarshalTo(data []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Role) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Role)))
+		i += copy(data[i:], m.Role)
+	}
 	return i, nil
 }
 
-func (m *AuthRoleGrantRequest) Marshal() (data []byte, err error) {
+func (m *AuthRoleGrantPermissionRequest) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -4719,15 +5894,31 @@ func (m *AuthRoleGrantRequest) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *AuthRoleGrantRequest) MarshalTo(data []byte) (int, error) {
+func (m *AuthRoleGrantPermissionRequest) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
+	if len(m.Name) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Name)))
+		i += copy(data[i:], m.Name)
+	}
+	if m.Perm != nil {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.Perm.Size()))
+		n34, err := m.Perm.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n34
+	}
 	return i, nil
 }
 
-func (m *AuthRoleRevokeRequest) Marshal() (data []byte, err error) {
+func (m *AuthRoleRevokePermissionRequest) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -4737,11 +5928,29 @@ func (m *AuthRoleRevokeRequest) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *AuthRoleRevokeRequest) MarshalTo(data []byte) (int, error) {
+func (m *AuthRoleRevokePermissionRequest) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
+	if len(m.Role) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Role)))
+		i += copy(data[i:], m.Role)
+	}
+	if len(m.Key) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Key)))
+		i += copy(data[i:], m.Key)
+	}
+	if len(m.RangeEnd) > 0 {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.RangeEnd)))
+		i += copy(data[i:], m.RangeEnd)
+	}
 	return i, nil
 }
 
@@ -4764,11 +5973,11 @@ func (m *AuthEnableResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n31, err := m.Header.MarshalTo(data[i:])
+		n35, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n31
+		i += n35
 	}
 	return i, nil
 }
@@ -4792,11 +6001,11 @@ func (m *AuthDisableResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n32, err := m.Header.MarshalTo(data[i:])
+		n36, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n32
+		i += n36
 	}
 	return i, nil
 }
@@ -4820,11 +6029,17 @@ func (m *AuthenticateResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n33, err := m.Header.MarshalTo(data[i:])
+		n37, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n33
+		i += n37
+	}
+	if len(m.Token) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintRpc(data, i, uint64(len(m.Token)))
+		i += copy(data[i:], m.Token)
 	}
 	return i, nil
 }
@@ -4848,11 +6063,11 @@ func (m *AuthUserAddResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n34, err := m.Header.MarshalTo(data[i:])
+		n38, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n34
+		i += n38
 	}
 	return i, nil
 }
@@ -4876,11 +6091,26 @@ func (m *AuthUserGetResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n35, err := m.Header.MarshalTo(data[i:])
+		n39, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n35
+		i += n39
+	}
+	if len(m.Roles) > 0 {
+		for _, s := range m.Roles {
+			data[i] = 0x12
+			i++
+			l = len(s)
+			for l >= 1<<7 {
+				data[i] = uint8(uint64(l)&0x7f | 0x80)
+				l >>= 7
+				i++
+			}
+			data[i] = uint8(l)
+			i++
+			i += copy(data[i:], s)
+		}
 	}
 	return i, nil
 }
@@ -4904,11 +6134,11 @@ func (m *AuthUserDeleteResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n36, err := m.Header.MarshalTo(data[i:])
+		n40, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n36
+		i += n40
 	}
 	return i, nil
 }
@@ -4932,16 +6162,16 @@ func (m *AuthUserChangePasswordResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n37, err := m.Header.MarshalTo(data[i:])
+		n41, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n37
+		i += n41
 	}
 	return i, nil
 }
 
-func (m *AuthUserGrantResponse) Marshal() (data []byte, err error) {
+func (m *AuthUserGrantRoleResponse) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -4951,7 +6181,7 @@ func (m *AuthUserGrantResponse) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *AuthUserGrantResponse) MarshalTo(data []byte) (int, error) {
+func (m *AuthUserGrantRoleResponse) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -4960,16 +6190,16 @@ func (m *AuthUserGrantResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n38, err := m.Header.MarshalTo(data[i:])
+		n42, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n38
+		i += n42
 	}
 	return i, nil
 }
 
-func (m *AuthUserRevokeResponse) Marshal() (data []byte, err error) {
+func (m *AuthUserRevokeRoleResponse) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -4979,7 +6209,7 @@ func (m *AuthUserRevokeResponse) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *AuthUserRevokeResponse) MarshalTo(data []byte) (int, error) {
+func (m *AuthUserRevokeRoleResponse) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -4988,11 +6218,11 @@ func (m *AuthUserRevokeResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n39, err := m.Header.MarshalTo(data[i:])
+		n43, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n39
+		i += n43
 	}
 	return i, nil
 }
@@ -5016,11 +6246,11 @@ func (m *AuthRoleAddResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n40, err := m.Header.MarshalTo(data[i:])
+		n44, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n40
+		i += n44
 	}
 	return i, nil
 }
@@ -5044,11 +6274,109 @@ func (m *AuthRoleGetResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n41, err := m.Header.MarshalTo(data[i:])
+		n45, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n41
+		i += n45
+	}
+	if len(m.Perm) > 0 {
+		for _, msg := range m.Perm {
+			data[i] = 0x12
+			i++
+			i = encodeVarintRpc(data, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(data[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	return i, nil
+}
+
+func (m *AuthRoleListResponse) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *AuthRoleListResponse) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Header != nil {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
+		n46, err := m.Header.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n46
+	}
+	if len(m.Roles) > 0 {
+		for _, s := range m.Roles {
+			data[i] = 0x12
+			i++
+			l = len(s)
+			for l >= 1<<7 {
+				data[i] = uint8(uint64(l)&0x7f | 0x80)
+				l >>= 7
+				i++
+			}
+			data[i] = uint8(l)
+			i++
+			i += copy(data[i:], s)
+		}
+	}
+	return i, nil
+}
+
+func (m *AuthUserListResponse) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *AuthUserListResponse) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Header != nil {
+		data[i] = 0xa
+		i++
+		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
+		n47, err := m.Header.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n47
+	}
+	if len(m.Users) > 0 {
+		for _, s := range m.Users {
+			data[i] = 0x12
+			i++
+			l = len(s)
+			for l >= 1<<7 {
+				data[i] = uint8(uint64(l)&0x7f | 0x80)
+				l >>= 7
+				i++
+			}
+			data[i] = uint8(l)
+			i++
+			i += copy(data[i:], s)
+		}
 	}
 	return i, nil
 }
@@ -5072,16 +6400,16 @@ func (m *AuthRoleDeleteResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n42, err := m.Header.MarshalTo(data[i:])
+		n48, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n42
+		i += n48
 	}
 	return i, nil
 }
 
-func (m *AuthRoleGrantResponse) Marshal() (data []byte, err error) {
+func (m *AuthRoleGrantPermissionResponse) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -5091,7 +6419,7 @@ func (m *AuthRoleGrantResponse) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *AuthRoleGrantResponse) MarshalTo(data []byte) (int, error) {
+func (m *AuthRoleGrantPermissionResponse) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -5100,16 +6428,16 @@ func (m *AuthRoleGrantResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n43, err := m.Header.MarshalTo(data[i:])
+		n49, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n43
+		i += n49
 	}
 	return i, nil
 }
 
-func (m *AuthRoleRevokeResponse) Marshal() (data []byte, err error) {
+func (m *AuthRoleRevokePermissionResponse) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
 	n, err := m.MarshalTo(data)
@@ -5119,7 +6447,7 @@ func (m *AuthRoleRevokeResponse) Marshal() (data []byte, err error) {
 	return data[:n], nil
 }
 
-func (m *AuthRoleRevokeResponse) MarshalTo(data []byte) (int, error) {
+func (m *AuthRoleRevokePermissionResponse) MarshalTo(data []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -5128,11 +6456,11 @@ func (m *AuthRoleRevokeResponse) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintRpc(data, i, uint64(m.Header.Size()))
-		n44, err := m.Header.MarshalTo(data[i:])
+		n50, err := m.Header.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n44
+		i += n50
 	}
 	return i, nil
 }
@@ -5185,17 +6513,13 @@ func (m *ResponseHeader) Size() (n int) {
 func (m *RangeRequest) Size() (n int) {
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(m.Key)
-		if l > 0 {
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	l = len(m.Key)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
 	}
-	if m.RangeEnd != nil {
-		l = len(m.RangeEnd)
-		if l > 0 {
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	l = len(m.RangeEnd)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
 	}
 	if m.Limit != 0 {
 		n += 1 + sovRpc(uint64(m.Limit))
@@ -5211,6 +6535,24 @@ func (m *RangeRequest) Size() (n int) {
 	}
 	if m.Serializable {
 		n += 2
+	}
+	if m.KeysOnly {
+		n += 2
+	}
+	if m.CountOnly {
+		n += 2
+	}
+	if m.MinModRevision != 0 {
+		n += 1 + sovRpc(uint64(m.MinModRevision))
+	}
+	if m.MaxModRevision != 0 {
+		n += 1 + sovRpc(uint64(m.MaxModRevision))
+	}
+	if m.MinCreateRevision != 0 {
+		n += 1 + sovRpc(uint64(m.MinCreateRevision))
+	}
+	if m.MaxCreateRevision != 0 {
+		n += 1 + sovRpc(uint64(m.MaxCreateRevision))
 	}
 	return n
 }
@@ -5231,26 +6573,28 @@ func (m *RangeResponse) Size() (n int) {
 	if m.More {
 		n += 2
 	}
+	if m.Count != 0 {
+		n += 1 + sovRpc(uint64(m.Count))
+	}
 	return n
 }
 
 func (m *PutRequest) Size() (n int) {
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(m.Key)
-		if l > 0 {
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	l = len(m.Key)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
 	}
-	if m.Value != nil {
-		l = len(m.Value)
-		if l > 0 {
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	l = len(m.Value)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
 	}
 	if m.Lease != 0 {
 		n += 1 + sovRpc(uint64(m.Lease))
+	}
+	if m.PrevKv {
+		n += 2
 	}
 	return n
 }
@@ -5262,23 +6606,26 @@ func (m *PutResponse) Size() (n int) {
 		l = m.Header.Size()
 		n += 1 + l + sovRpc(uint64(l))
 	}
+	if m.PrevKv != nil {
+		l = m.PrevKv.Size()
+		n += 1 + l + sovRpc(uint64(l))
+	}
 	return n
 }
 
 func (m *DeleteRangeRequest) Size() (n int) {
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(m.Key)
-		if l > 0 {
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	l = len(m.Key)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
 	}
-	if m.RangeEnd != nil {
-		l = len(m.RangeEnd)
-		if l > 0 {
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	l = len(m.RangeEnd)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	if m.PrevKv {
+		n += 2
 	}
 	return n
 }
@@ -5293,10 +6640,16 @@ func (m *DeleteRangeResponse) Size() (n int) {
 	if m.Deleted != 0 {
 		n += 1 + sovRpc(uint64(m.Deleted))
 	}
+	if len(m.PrevKvs) > 0 {
+		for _, e := range m.PrevKvs {
+			l = e.Size()
+			n += 1 + l + sovRpc(uint64(l))
+		}
+	}
 	return n
 }
 
-func (m *RequestUnion) Size() (n int) {
+func (m *RequestOp) Size() (n int) {
 	var l int
 	_ = l
 	if m.Request != nil {
@@ -5305,7 +6658,7 @@ func (m *RequestUnion) Size() (n int) {
 	return n
 }
 
-func (m *RequestUnion_RequestRange) Size() (n int) {
+func (m *RequestOp_RequestRange) Size() (n int) {
 	var l int
 	_ = l
 	if m.RequestRange != nil {
@@ -5314,7 +6667,7 @@ func (m *RequestUnion_RequestRange) Size() (n int) {
 	}
 	return n
 }
-func (m *RequestUnion_RequestPut) Size() (n int) {
+func (m *RequestOp_RequestPut) Size() (n int) {
 	var l int
 	_ = l
 	if m.RequestPut != nil {
@@ -5323,7 +6676,7 @@ func (m *RequestUnion_RequestPut) Size() (n int) {
 	}
 	return n
 }
-func (m *RequestUnion_RequestDeleteRange) Size() (n int) {
+func (m *RequestOp_RequestDeleteRange) Size() (n int) {
 	var l int
 	_ = l
 	if m.RequestDeleteRange != nil {
@@ -5332,7 +6685,7 @@ func (m *RequestUnion_RequestDeleteRange) Size() (n int) {
 	}
 	return n
 }
-func (m *ResponseUnion) Size() (n int) {
+func (m *ResponseOp) Size() (n int) {
 	var l int
 	_ = l
 	if m.Response != nil {
@@ -5341,7 +6694,7 @@ func (m *ResponseUnion) Size() (n int) {
 	return n
 }
 
-func (m *ResponseUnion_ResponseRange) Size() (n int) {
+func (m *ResponseOp_ResponseRange) Size() (n int) {
 	var l int
 	_ = l
 	if m.ResponseRange != nil {
@@ -5350,7 +6703,7 @@ func (m *ResponseUnion_ResponseRange) Size() (n int) {
 	}
 	return n
 }
-func (m *ResponseUnion_ResponsePut) Size() (n int) {
+func (m *ResponseOp_ResponsePut) Size() (n int) {
 	var l int
 	_ = l
 	if m.ResponsePut != nil {
@@ -5359,7 +6712,7 @@ func (m *ResponseUnion_ResponsePut) Size() (n int) {
 	}
 	return n
 }
-func (m *ResponseUnion_ResponseDeleteRange) Size() (n int) {
+func (m *ResponseOp_ResponseDeleteRange) Size() (n int) {
 	var l int
 	_ = l
 	if m.ResponseDeleteRange != nil {
@@ -5377,11 +6730,9 @@ func (m *Compare) Size() (n int) {
 	if m.Target != 0 {
 		n += 1 + sovRpc(uint64(m.Target))
 	}
-	if m.Key != nil {
-		l = len(m.Key)
-		if l > 0 {
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	l = len(m.Key)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
 	}
 	if m.TargetUnion != nil {
 		n += m.TargetUnion.Size()
@@ -5500,6 +6851,29 @@ func (m *HashResponse) Size() (n int) {
 	return n
 }
 
+func (m *SnapshotRequest) Size() (n int) {
+	var l int
+	_ = l
+	return n
+}
+
+func (m *SnapshotResponse) Size() (n int) {
+	var l int
+	_ = l
+	if m.Header != nil {
+		l = m.Header.Size()
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	if m.RemainingBytes != 0 {
+		n += 1 + sovRpc(uint64(m.RemainingBytes))
+	}
+	l = len(m.Blob)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	return n
+}
+
 func (m *WatchRequest) Size() (n int) {
 	var l int
 	_ = l
@@ -5530,22 +6904,26 @@ func (m *WatchRequest_CancelRequest) Size() (n int) {
 func (m *WatchCreateRequest) Size() (n int) {
 	var l int
 	_ = l
-	if m.Key != nil {
-		l = len(m.Key)
-		if l > 0 {
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	l = len(m.Key)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
 	}
-	if m.RangeEnd != nil {
-		l = len(m.RangeEnd)
-		if l > 0 {
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	l = len(m.RangeEnd)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
 	}
 	if m.StartRevision != 0 {
 		n += 1 + sovRpc(uint64(m.StartRevision))
 	}
 	if m.ProgressNotify {
+		n += 2
+	}
+	if len(m.Filters) > 0 {
+		for _, e := range m.Filters {
+			n += 1 + sovRpc(uint64(e))
+		}
+	}
+	if m.PrevKv {
 		n += 2
 	}
 	return n
@@ -5664,6 +7042,43 @@ func (m *LeaseKeepAliveResponse) Size() (n int) {
 	return n
 }
 
+func (m *LeaseTimeToLiveRequest) Size() (n int) {
+	var l int
+	_ = l
+	if m.ID != 0 {
+		n += 1 + sovRpc(uint64(m.ID))
+	}
+	if m.Keys {
+		n += 2
+	}
+	return n
+}
+
+func (m *LeaseTimeToLiveResponse) Size() (n int) {
+	var l int
+	_ = l
+	if m.Header != nil {
+		l = m.Header.Size()
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	if m.ID != 0 {
+		n += 1 + sovRpc(uint64(m.ID))
+	}
+	if m.TTL != 0 {
+		n += 1 + sovRpc(uint64(m.TTL))
+	}
+	if m.GrantedTTL != 0 {
+		n += 1 + sovRpc(uint64(m.GrantedTTL))
+	}
+	if len(m.Keys) > 0 {
+		for _, b := range m.Keys {
+			l = len(b)
+			n += 1 + l + sovRpc(uint64(l))
+		}
+	}
+	return n
+}
+
 func (m *Member) Size() (n int) {
 	var l int
 	_ = l
@@ -5673,9 +7088,6 @@ func (m *Member) Size() (n int) {
 	l = len(m.Name)
 	if l > 0 {
 		n += 1 + l + sovRpc(uint64(l))
-	}
-	if m.IsLeader {
-		n += 2
 	}
 	if len(m.PeerURLs) > 0 {
 		for _, s := range m.PeerURLs {
@@ -5860,6 +7272,18 @@ func (m *StatusResponse) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovRpc(uint64(l))
 	}
+	if m.DbSize != 0 {
+		n += 1 + sovRpc(uint64(m.DbSize))
+	}
+	if m.Leader != 0 {
+		n += 1 + sovRpc(uint64(m.Leader))
+	}
+	if m.RaftIndex != 0 {
+		n += 1 + sovRpc(uint64(m.RaftIndex))
+	}
+	if m.RaftTerm != 0 {
+		n += 1 + sovRpc(uint64(m.RaftTerm))
+	}
 	return n
 }
 
@@ -5878,6 +7302,14 @@ func (m *AuthDisableRequest) Size() (n int) {
 func (m *AuthenticateRequest) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	l = len(m.Password)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
 	return n
 }
 
@@ -5898,6 +7330,10 @@ func (m *AuthUserAddRequest) Size() (n int) {
 func (m *AuthUserGetRequest) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
 	return n
 }
 
@@ -5925,15 +7361,31 @@ func (m *AuthUserChangePasswordRequest) Size() (n int) {
 	return n
 }
 
-func (m *AuthUserGrantRequest) Size() (n int) {
+func (m *AuthUserGrantRoleRequest) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.User)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	l = len(m.Role)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
 	return n
 }
 
-func (m *AuthUserRevokeRequest) Size() (n int) {
+func (m *AuthUserRevokeRoleRequest) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	l = len(m.Role)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
 	return n
 }
 
@@ -5950,24 +7402,64 @@ func (m *AuthRoleAddRequest) Size() (n int) {
 func (m *AuthRoleGetRequest) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.Role)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	return n
+}
+
+func (m *AuthUserListRequest) Size() (n int) {
+	var l int
+	_ = l
+	return n
+}
+
+func (m *AuthRoleListRequest) Size() (n int) {
+	var l int
+	_ = l
 	return n
 }
 
 func (m *AuthRoleDeleteRequest) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.Role)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
 	return n
 }
 
-func (m *AuthRoleGrantRequest) Size() (n int) {
+func (m *AuthRoleGrantPermissionRequest) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	if m.Perm != nil {
+		l = m.Perm.Size()
+		n += 1 + l + sovRpc(uint64(l))
+	}
 	return n
 }
 
-func (m *AuthRoleRevokeRequest) Size() (n int) {
+func (m *AuthRoleRevokePermissionRequest) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.Role)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	l = len(m.Key)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	l = len(m.RangeEnd)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
 	return n
 }
 
@@ -5998,6 +7490,10 @@ func (m *AuthenticateResponse) Size() (n int) {
 		l = m.Header.Size()
 		n += 1 + l + sovRpc(uint64(l))
 	}
+	l = len(m.Token)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
+	}
 	return n
 }
 
@@ -6017,6 +7513,12 @@ func (m *AuthUserGetResponse) Size() (n int) {
 	if m.Header != nil {
 		l = m.Header.Size()
 		n += 1 + l + sovRpc(uint64(l))
+	}
+	if len(m.Roles) > 0 {
+		for _, s := range m.Roles {
+			l = len(s)
+			n += 1 + l + sovRpc(uint64(l))
+		}
 	}
 	return n
 }
@@ -6041,7 +7543,7 @@ func (m *AuthUserChangePasswordResponse) Size() (n int) {
 	return n
 }
 
-func (m *AuthUserGrantResponse) Size() (n int) {
+func (m *AuthUserGrantRoleResponse) Size() (n int) {
 	var l int
 	_ = l
 	if m.Header != nil {
@@ -6051,7 +7553,7 @@ func (m *AuthUserGrantResponse) Size() (n int) {
 	return n
 }
 
-func (m *AuthUserRevokeResponse) Size() (n int) {
+func (m *AuthUserRevokeRoleResponse) Size() (n int) {
 	var l int
 	_ = l
 	if m.Header != nil {
@@ -6078,6 +7580,44 @@ func (m *AuthRoleGetResponse) Size() (n int) {
 		l = m.Header.Size()
 		n += 1 + l + sovRpc(uint64(l))
 	}
+	if len(m.Perm) > 0 {
+		for _, e := range m.Perm {
+			l = e.Size()
+			n += 1 + l + sovRpc(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *AuthRoleListResponse) Size() (n int) {
+	var l int
+	_ = l
+	if m.Header != nil {
+		l = m.Header.Size()
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	if len(m.Roles) > 0 {
+		for _, s := range m.Roles {
+			l = len(s)
+			n += 1 + l + sovRpc(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *AuthUserListResponse) Size() (n int) {
+	var l int
+	_ = l
+	if m.Header != nil {
+		l = m.Header.Size()
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	if len(m.Users) > 0 {
+		for _, s := range m.Users {
+			l = len(s)
+			n += 1 + l + sovRpc(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -6091,7 +7631,7 @@ func (m *AuthRoleDeleteResponse) Size() (n int) {
 	return n
 }
 
-func (m *AuthRoleGrantResponse) Size() (n int) {
+func (m *AuthRoleGrantPermissionResponse) Size() (n int) {
 	var l int
 	_ = l
 	if m.Header != nil {
@@ -6101,7 +7641,7 @@ func (m *AuthRoleGrantResponse) Size() (n int) {
 	return n
 }
 
-func (m *AuthRoleRevokeResponse) Size() (n int) {
+func (m *AuthRoleRevokePermissionResponse) Size() (n int) {
 	var l int
 	_ = l
 	if m.Header != nil {
@@ -6437,6 +7977,122 @@ func (m *RangeRequest) Unmarshal(data []byte) error {
 				}
 			}
 			m.Serializable = bool(v != 0)
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KeysOnly", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.KeysOnly = bool(v != 0)
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CountOnly", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.CountOnly = bool(v != 0)
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinModRevision", wireType)
+			}
+			m.MinModRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.MinModRevision |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxModRevision", wireType)
+			}
+			m.MaxModRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.MaxModRevision |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinCreateRevision", wireType)
+			}
+			m.MinCreateRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.MinCreateRevision |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxCreateRevision", wireType)
+			}
+			m.MaxCreateRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.MaxCreateRevision |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -6546,7 +8202,7 @@ func (m *RangeResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Kvs = append(m.Kvs, &storagepb.KeyValue{})
+			m.Kvs = append(m.Kvs, &mvccpb.KeyValue{})
 			if err := m.Kvs[len(m.Kvs)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -6571,6 +8227,25 @@ func (m *RangeResponse) Unmarshal(data []byte) error {
 				}
 			}
 			m.More = bool(v != 0)
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
+			}
+			m.Count = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Count |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -6702,6 +8377,26 @@ func (m *PutRequest) Unmarshal(data []byte) error {
 					break
 				}
 			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PrevKv", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PrevKv = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -6782,6 +8477,39 @@ func (m *PutResponse) Unmarshal(data []byte) error {
 				m.Header = &ResponseHeader{}
 			}
 			if err := m.Header.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PrevKv", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.PrevKv == nil {
+				m.PrevKv = &mvccpb.KeyValue{}
+			}
+			if err := m.PrevKv.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -6897,6 +8625,26 @@ func (m *DeleteRangeRequest) Unmarshal(data []byte) error {
 				m.RangeEnd = []byte{}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PrevKv", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PrevKv = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -6999,6 +8747,37 @@ func (m *DeleteRangeResponse) Unmarshal(data []byte) error {
 					break
 				}
 			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PrevKvs", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.PrevKvs = append(m.PrevKvs, &mvccpb.KeyValue{})
+			if err := m.PrevKvs[len(m.PrevKvs)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -7020,7 +8799,7 @@ func (m *DeleteRangeResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *RequestUnion) Unmarshal(data []byte) error {
+func (m *RequestOp) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -7043,10 +8822,10 @@ func (m *RequestUnion) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: RequestUnion: wiretype end group for non-group")
+			return fmt.Errorf("proto: RequestOp: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: RequestUnion: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: RequestOp: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -7079,7 +8858,7 @@ func (m *RequestUnion) Unmarshal(data []byte) error {
 			if err := v.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			m.Request = &RequestUnion_RequestRange{v}
+			m.Request = &RequestOp_RequestRange{v}
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
@@ -7111,7 +8890,7 @@ func (m *RequestUnion) Unmarshal(data []byte) error {
 			if err := v.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			m.Request = &RequestUnion_RequestPut{v}
+			m.Request = &RequestOp_RequestPut{v}
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
@@ -7143,7 +8922,7 @@ func (m *RequestUnion) Unmarshal(data []byte) error {
 			if err := v.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			m.Request = &RequestUnion_RequestDeleteRange{v}
+			m.Request = &RequestOp_RequestDeleteRange{v}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -7166,7 +8945,7 @@ func (m *RequestUnion) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *ResponseUnion) Unmarshal(data []byte) error {
+func (m *ResponseOp) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -7189,10 +8968,10 @@ func (m *ResponseUnion) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ResponseUnion: wiretype end group for non-group")
+			return fmt.Errorf("proto: ResponseOp: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ResponseUnion: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ResponseOp: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -7225,7 +9004,7 @@ func (m *ResponseUnion) Unmarshal(data []byte) error {
 			if err := v.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			m.Response = &ResponseUnion_ResponseRange{v}
+			m.Response = &ResponseOp_ResponseRange{v}
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
@@ -7257,7 +9036,7 @@ func (m *ResponseUnion) Unmarshal(data []byte) error {
 			if err := v.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			m.Response = &ResponseUnion_ResponsePut{v}
+			m.Response = &ResponseOp_ResponsePut{v}
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
@@ -7289,7 +9068,7 @@ func (m *ResponseUnion) Unmarshal(data []byte) error {
 			if err := v.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			m.Response = &ResponseUnion_ResponseDeleteRange{v}
+			m.Response = &ResponseOp_ResponseDeleteRange{v}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -7607,7 +9386,7 @@ func (m *TxnRequest) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Success = append(m.Success, &RequestUnion{})
+			m.Success = append(m.Success, &RequestOp{})
 			if err := m.Success[len(m.Success)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -7638,7 +9417,7 @@ func (m *TxnRequest) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Failure = append(m.Failure, &RequestUnion{})
+			m.Failure = append(m.Failure, &RequestOp{})
 			if err := m.Failure[len(m.Failure)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -7772,7 +9551,7 @@ func (m *TxnResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Responses = append(m.Responses, &ResponseUnion{})
+			m.Responses = append(m.Responses, &ResponseOp{})
 			if err := m.Responses[len(m.Responses)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -8122,6 +9901,189 @@ func (m *HashResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
+func (m *SnapshotRequest) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SnapshotRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SnapshotRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SnapshotResponse) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SnapshotResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SnapshotResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Header", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Header == nil {
+				m.Header = &ResponseHeader{}
+			}
+			if err := m.Header.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RemainingBytes", wireType)
+			}
+			m.RemainingBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.RemainingBytes |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Blob", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				byteLen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Blob = append(m.Blob[:0], data[iNdEx:postIndex]...)
+			if m.Blob == nil {
+				m.Blob = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *WatchRequest) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
@@ -8366,6 +10328,46 @@ func (m *WatchCreateRequest) Unmarshal(data []byte) error {
 				}
 			}
 			m.ProgressNotify = bool(v != 0)
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Filters", wireType)
+			}
+			var v WatchCreateRequest_FilterType
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (WatchCreateRequest_FilterType(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Filters = append(m.Filters, v)
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PrevKv", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PrevKv = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -8622,7 +10624,7 @@ func (m *WatchResponse) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Events = append(m.Events, &storagepb.Event{})
+			m.Events = append(m.Events, &mvccpb.Event{})
 			if err := m.Events[len(m.Events)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -9228,6 +11230,264 @@ func (m *LeaseKeepAliveResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
+func (m *LeaseTimeToLiveRequest) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LeaseTimeToLiveRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LeaseTimeToLiveRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ID", wireType)
+			}
+			m.ID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.ID |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Keys", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Keys = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LeaseTimeToLiveResponse) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LeaseTimeToLiveResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LeaseTimeToLiveResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Header", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Header == nil {
+				m.Header = &ResponseHeader{}
+			}
+			if err := m.Header.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ID", wireType)
+			}
+			m.ID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.ID |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TTL", wireType)
+			}
+			m.TTL = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.TTL |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GrantedTTL", wireType)
+			}
+			m.GrantedTTL = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.GrantedTTL |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Keys", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				byteLen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Keys = append(m.Keys, make([]byte, postIndex-iNdEx))
+			copy(m.Keys[len(m.Keys)-1], data[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *Member) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
@@ -9306,26 +11566,6 @@ func (m *Member) Unmarshal(data []byte) error {
 			m.Name = string(data[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IsLeader", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowRpc
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				v |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.IsLeader = bool(v != 0)
-		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PeerURLs", wireType)
 			}
@@ -9354,7 +11594,7 @@ func (m *Member) Unmarshal(data []byte) error {
 			}
 			m.PeerURLs = append(m.PeerURLs, string(data[iNdEx:postIndex]))
 			iNdEx = postIndex
-		case 5:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ClientURLs", wireType)
 			}
@@ -10679,6 +12919,82 @@ func (m *StatusResponse) Unmarshal(data []byte) error {
 			}
 			m.Version = string(data[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DbSize", wireType)
+			}
+			m.DbSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.DbSize |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Leader", wireType)
+			}
+			m.Leader = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Leader |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RaftIndex", wireType)
+			}
+			m.RaftIndex = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.RaftIndex |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RaftTerm", wireType)
+			}
+			m.RaftTerm = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.RaftTerm |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -10829,6 +13145,64 @@ func (m *AuthenticateRequest) Unmarshal(data []byte) error {
 			return fmt.Errorf("proto: AuthenticateRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Password", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Password = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -10987,6 +13361,35 @@ func (m *AuthUserGetRequest) Unmarshal(data []byte) error {
 			return fmt.Errorf("proto: AuthUserGetRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -11195,7 +13598,7 @@ func (m *AuthUserChangePasswordRequest) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *AuthUserGrantRequest) Unmarshal(data []byte) error {
+func (m *AuthUserGrantRoleRequest) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -11218,12 +13621,70 @@ func (m *AuthUserGrantRequest) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AuthUserGrantRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: AuthUserGrantRoleRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthUserGrantRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AuthUserGrantRoleRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field User", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.User = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Role", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Role = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -11245,7 +13706,7 @@ func (m *AuthUserGrantRequest) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *AuthUserRevokeRequest) Unmarshal(data []byte) error {
+func (m *AuthUserRevokeRoleRequest) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -11268,12 +13729,70 @@ func (m *AuthUserRevokeRequest) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AuthUserRevokeRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: AuthUserRevokeRoleRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthUserRevokeRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AuthUserRevokeRoleRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Role", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Role = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -11403,6 +13922,135 @@ func (m *AuthRoleGetRequest) Unmarshal(data []byte) error {
 			return fmt.Errorf("proto: AuthRoleGetRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Role", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Role = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AuthUserListRequest) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AuthUserListRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AuthUserListRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AuthRoleListRequest) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AuthRoleListRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AuthRoleListRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -11453,6 +14101,35 @@ func (m *AuthRoleDeleteRequest) Unmarshal(data []byte) error {
 			return fmt.Errorf("proto: AuthRoleDeleteRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Role", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Role = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -11474,7 +14151,7 @@ func (m *AuthRoleDeleteRequest) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *AuthRoleGrantRequest) Unmarshal(data []byte) error {
+func (m *AuthRoleGrantPermissionRequest) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -11497,12 +14174,74 @@ func (m *AuthRoleGrantRequest) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AuthRoleGrantRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: AuthRoleGrantPermissionRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthRoleGrantRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AuthRoleGrantPermissionRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Perm", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Perm == nil {
+				m.Perm = &authpb.Permission{}
+			}
+			if err := m.Perm.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -11524,7 +14263,7 @@ func (m *AuthRoleGrantRequest) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *AuthRoleRevokeRequest) Unmarshal(data []byte) error {
+func (m *AuthRoleRevokePermissionRequest) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -11547,12 +14286,99 @@ func (m *AuthRoleRevokeRequest) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AuthRoleRevokeRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: AuthRoleRevokePermissionRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthRoleRevokeRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AuthRoleRevokePermissionRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Role", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Role = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Key = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RangeEnd", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RangeEnd = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -11802,6 +14628,35 @@ func (m *AuthenticateResponse) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Token", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Token = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -11967,6 +14822,35 @@ func (m *AuthUserGetResponse) Unmarshal(data []byte) error {
 			if err := m.Header.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Roles", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Roles = append(m.Roles, string(data[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -12155,7 +15039,7 @@ func (m *AuthUserChangePasswordResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *AuthUserGrantResponse) Unmarshal(data []byte) error {
+func (m *AuthUserGrantRoleResponse) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -12178,10 +15062,10 @@ func (m *AuthUserGrantResponse) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AuthUserGrantResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: AuthUserGrantRoleResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthUserGrantResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AuthUserGrantRoleResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -12238,7 +15122,7 @@ func (m *AuthUserGrantResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *AuthUserRevokeResponse) Unmarshal(data []byte) error {
+func (m *AuthUserRevokeRoleResponse) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -12261,10 +15145,10 @@ func (m *AuthUserRevokeResponse) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AuthUserRevokeResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: AuthUserRevokeRoleResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthUserRevokeResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AuthUserRevokeRoleResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -12466,6 +15350,261 @@ func (m *AuthRoleGetResponse) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Perm", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Perm = append(m.Perm, &authpb.Permission{})
+			if err := m.Perm[len(m.Perm)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AuthRoleListResponse) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AuthRoleListResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AuthRoleListResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Header", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Header == nil {
+				m.Header = &ResponseHeader{}
+			}
+			if err := m.Header.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Roles", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Roles = append(m.Roles, string(data[iNdEx:postIndex]))
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AuthUserListResponse) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AuthUserListResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AuthUserListResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Header", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Header == nil {
+				m.Header = &ResponseHeader{}
+			}
+			if err := m.Header.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Users", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Users = append(m.Users, string(data[iNdEx:postIndex]))
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(data[iNdEx:])
@@ -12570,7 +15709,7 @@ func (m *AuthRoleDeleteResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *AuthRoleGrantResponse) Unmarshal(data []byte) error {
+func (m *AuthRoleGrantPermissionResponse) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -12593,10 +15732,10 @@ func (m *AuthRoleGrantResponse) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AuthRoleGrantResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: AuthRoleGrantPermissionResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthRoleGrantResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AuthRoleGrantPermissionResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -12653,7 +15792,7 @@ func (m *AuthRoleGrantResponse) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *AuthRoleRevokeResponse) Unmarshal(data []byte) error {
+func (m *AuthRoleRevokePermissionResponse) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
 	for iNdEx < l {
@@ -12676,10 +15815,10 @@ func (m *AuthRoleRevokeResponse) Unmarshal(data []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AuthRoleRevokeResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: AuthRoleRevokePermissionResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AuthRoleRevokeResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AuthRoleRevokePermissionResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -12840,3 +15979,209 @@ var (
 	ErrInvalidLengthRpc = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowRpc   = fmt.Errorf("proto: integer overflow")
 )
+
+var fileDescriptorRpc = []byte{
+	// 3228 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xb4, 0x3a, 0x4d, 0x73, 0x1b, 0xc7,
+	0xb1, 0x5a, 0x00, 0x04, 0x88, 0x06, 0x08, 0x51, 0x43, 0x4a, 0x06, 0x57, 0x14, 0x45, 0x8d, 0x3e,
+	0x6d, 0xd9, 0xc4, 0x33, 0xed, 0xf7, 0x0e, 0xef, 0xbd, 0x72, 0x15, 0x48, 0xc0, 0x32, 0x43, 0x9a,
+	0x94, 0x97, 0x14, 0xed, 0x54, 0xb9, 0xc2, 0x5a, 0x02, 0x2b, 0x12, 0x45, 0x7c, 0x79, 0x77, 0x01,
+	0x89, 0x4e, 0x52, 0x95, 0x72, 0xc5, 0x87, 0xe4, 0x18, 0x1f, 0x92, 0x38, 0xc7, 0xfc, 0x86, 0xdc,
+	0xf2, 0x03, 0x52, 0xb9, 0xc4, 0x55, 0xf9, 0x03, 0xa9, 0x24, 0x87, 0x1c, 0x72, 0x4f, 0xe5, 0x90,
+	0x4a, 0xe6, 0x73, 0x77, 0x76, 0x31, 0x0b, 0xd2, 0xd9, 0xf8, 0x20, 0x71, 0xa7, 0xa7, 0xa7, 0xbf,
+	0x66, 0xba, 0xa7, 0xbb, 0x07, 0x50, 0x74, 0x87, 0xad, 0xb5, 0xa1, 0x3b, 0xf0, 0x07, 0xa8, 0xec,
+	0xf8, 0xad, 0xb6, 0xe7, 0xb8, 0x63, 0xc7, 0x1d, 0x1e, 0x9b, 0x8b, 0x27, 0x83, 0x93, 0x01, 0x9b,
+	0xa8, 0xd1, 0x2f, 0x8e, 0x63, 0x2e, 0x51, 0x9c, 0x5a, 0x6f, 0xdc, 0x6a, 0xb1, 0xff, 0x86, 0xc7,
+	0xb5, 0xb3, 0xb1, 0x98, 0xba, 0xc9, 0xa6, 0xec, 0x91, 0x7f, 0xca, 0xfe, 0x23, 0x53, 0xf4, 0x8f,
+	0x98, 0x5c, 0x3e, 0x19, 0x0c, 0x4e, 0xba, 0x4e, 0xcd, 0x1e, 0x76, 0x6a, 0x76, 0xbf, 0x3f, 0xf0,
+	0x6d, 0xbf, 0x33, 0xe8, 0x7b, 0x7c, 0x16, 0x7f, 0x6e, 0x40, 0xc5, 0x72, 0xbc, 0x21, 0x81, 0x38,
+	0xef, 0x39, 0x76, 0xdb, 0x71, 0xd1, 0x2d, 0x80, 0x56, 0x77, 0xe4, 0xf9, 0x8e, 0x7b, 0xd4, 0x69,
+	0x57, 0x8d, 0x55, 0xe3, 0x51, 0xce, 0x2a, 0x0a, 0xc8, 0x56, 0x1b, 0xdd, 0x84, 0x62, 0xcf, 0xe9,
+	0x1d, 0xf3, 0xd9, 0x0c, 0x9b, 0x9d, 0xe5, 0x00, 0x32, 0x69, 0xc2, 0xac, 0xeb, 0x8c, 0x3b, 0x1e,
+	0xe1, 0x50, 0xcd, 0x92, 0xb9, 0xac, 0x15, 0x8c, 0xe9, 0x42, 0xd7, 0x7e, 0xee, 0x1f, 0x11, 0x32,
+	0xbd, 0x6a, 0x8e, 0x2f, 0xa4, 0x80, 0x03, 0x32, 0xc6, 0x5f, 0x65, 0xa1, 0x6c, 0xd9, 0xfd, 0x13,
+	0xc7, 0x72, 0x3e, 0x19, 0x39, 0x9e, 0x8f, 0xe6, 0x21, 0x7b, 0xe6, 0x9c, 0x33, 0xf6, 0x65, 0x8b,
+	0x7e, 0xf2, 0xf5, 0x04, 0xe3, 0xc8, 0xe9, 0x73, 0xc6, 0x65, 0xba, 0x9e, 0x00, 0x9a, 0xfd, 0x36,
+	0x5a, 0x84, 0x99, 0x6e, 0xa7, 0xd7, 0xf1, 0x05, 0x57, 0x3e, 0x88, 0x88, 0x93, 0x8b, 0x89, 0xb3,
+	0x09, 0xe0, 0x0d, 0x5c, 0xff, 0x68, 0xe0, 0x12, 0xa5, 0xab, 0x33, 0x64, 0xb6, 0xb2, 0x7e, 0x6f,
+	0x4d, 0xdd, 0x88, 0x35, 0x55, 0xa0, 0xb5, 0x7d, 0x82, 0xbc, 0x47, 0x71, 0xad, 0xa2, 0x27, 0x3f,
+	0xd1, 0xbb, 0x50, 0x62, 0x44, 0x7c, 0xdb, 0x3d, 0x71, 0xfc, 0x6a, 0x9e, 0x51, 0xb9, 0x7f, 0x01,
+	0x95, 0x03, 0x86, 0x6c, 0x31, 0xf6, 0xfc, 0x1b, 0x61, 0x28, 0x13, 0xfc, 0x8e, 0xdd, 0xed, 0x7c,
+	0x6a, 0x1f, 0x77, 0x9d, 0x6a, 0x81, 0x10, 0x9a, 0xb5, 0x22, 0x30, 0xaa, 0x3f, 0x31, 0x83, 0x77,
+	0x34, 0xe8, 0x77, 0xcf, 0xab, 0xb3, 0x0c, 0x61, 0x96, 0x02, 0xf6, 0xc8, 0x98, 0x6d, 0xda, 0x60,
+	0xd4, 0xf7, 0xf9, 0x6c, 0x91, 0xcd, 0x16, 0x19, 0x84, 0x4e, 0xe3, 0x35, 0x28, 0x06, 0xf2, 0xa3,
+	0x59, 0xc8, 0xed, 0xee, 0xed, 0x36, 0xe7, 0xaf, 0x20, 0x80, 0x7c, 0x7d, 0x7f, 0xb3, 0xb9, 0xdb,
+	0x98, 0x37, 0x50, 0x09, 0x0a, 0x8d, 0x26, 0x1f, 0x64, 0xf0, 0x06, 0x40, 0x28, 0x29, 0x2a, 0x40,
+	0x76, 0xbb, 0xf9, 0x6d, 0x82, 0x4f, 0x70, 0x0e, 0x9b, 0xd6, 0xfe, 0xd6, 0xde, 0x2e, 0x59, 0x40,
+	0x16, 0x6f, 0x5a, 0xcd, 0xfa, 0x41, 0x73, 0x3e, 0x43, 0x31, 0xde, 0xdf, 0x6b, 0xcc, 0x67, 0x51,
+	0x11, 0x66, 0x0e, 0xeb, 0x3b, 0xcf, 0x9a, 0xf3, 0x39, 0xfc, 0x85, 0x01, 0x73, 0x42, 0x77, 0x7e,
+	0xbe, 0xd0, 0xdb, 0x90, 0x3f, 0x65, 0x67, 0x8c, 0x6d, 0x6b, 0x69, 0x7d, 0x39, 0x66, 0xa8, 0xc8,
+	0x39, 0xb4, 0x04, 0x2e, 0xb1, 0x4d, 0xf6, 0x6c, 0xec, 0x91, 0x1d, 0xcf, 0x92, 0x25, 0xf3, 0x6b,
+	0xfc, 0xf0, 0xaf, 0x6d, 0x3b, 0xe7, 0x87, 0x76, 0x77, 0xe4, 0x58, 0x74, 0x12, 0x21, 0xc8, 0xf5,
+	0x06, 0xae, 0xc3, 0x76, 0x7f, 0xd6, 0x62, 0xdf, 0xf4, 0x48, 0x30, 0x03, 0x88, 0x9d, 0xe7, 0x03,
+	0xdc, 0x02, 0x78, 0x3a, 0xf2, 0x93, 0x4f, 0x19, 0x59, 0x35, 0xa6, 0x74, 0xc5, 0x09, 0xe3, 0x03,
+	0x76, 0xbc, 0x1c, 0xdb, 0x73, 0x82, 0xe3, 0x45, 0x07, 0xe8, 0x15, 0x28, 0x0c, 0xc9, 0x79, 0x3a,
+	0x3a, 0x1b, 0x33, 0x1e, 0xb3, 0x56, 0x9e, 0x0e, 0xb7, 0xc7, 0xb8, 0x0f, 0x25, 0xc6, 0x24, 0x95,
+	0xde, 0xaf, 0x86, 0xd4, 0x33, 0x6c, 0xd9, 0xa4, 0xee, 0x92, 0xdf, 0xc7, 0x80, 0x1a, 0x4e, 0xd7,
+	0xf1, 0x9d, 0x34, 0x2e, 0xa4, 0x68, 0x93, 0x8d, 0x68, 0xf3, 0x13, 0x03, 0x16, 0x22, 0xe4, 0x53,
+	0xa9, 0x55, 0x85, 0x42, 0x9b, 0x11, 0xe3, 0x12, 0x64, 0x2d, 0x39, 0x44, 0x8f, 0x61, 0x56, 0x08,
+	0xe0, 0x11, 0x09, 0xf4, 0xbb, 0x5d, 0xe0, 0x32, 0x79, 0xf8, 0xaf, 0x06, 0x14, 0x85, 0xa2, 0x7b,
+	0x43, 0x54, 0x87, 0x39, 0x97, 0x0f, 0x8e, 0x98, 0x3e, 0x42, 0x22, 0x33, 0xd9, 0x13, 0xdf, 0xbb,
+	0x62, 0x95, 0xc5, 0x12, 0x06, 0x46, 0xff, 0x07, 0x25, 0x49, 0x62, 0x38, 0xf2, 0x85, 0xc9, 0xab,
+	0x51, 0x02, 0xe1, 0xc9, 0x21, 0xcb, 0x41, 0xa0, 0x13, 0x20, 0x3a, 0x80, 0x45, 0xb9, 0x98, 0x6b,
+	0x23, 0xc4, 0xc8, 0x32, 0x2a, 0xab, 0x51, 0x2a, 0x93, 0x5b, 0x45, 0xa8, 0x21, 0xb1, 0x5e, 0x99,
+	0xdc, 0x28, 0x42, 0x41, 0x40, 0xf1, 0xdf, 0x0c, 0x00, 0x69, 0x50, 0xa2, 0x6f, 0x03, 0x2a, 0xae,
+	0x18, 0x45, 0x14, 0xbe, 0xa9, 0x55, 0x58, 0xec, 0xc3, 0x15, 0x6b, 0x4e, 0x2e, 0xe2, 0x2a, 0xbf,
+	0x03, 0xe5, 0x80, 0x4a, 0xa8, 0xf3, 0x92, 0x46, 0xe7, 0x80, 0x42, 0x49, 0x2e, 0xa0, 0x5a, 0x7f,
+	0x08, 0xd7, 0x83, 0xf5, 0x1a, 0xb5, 0xef, 0x4c, 0x51, 0x3b, 0x20, 0xb8, 0x20, 0x29, 0xa8, 0x8a,
+	0x03, 0x8d, 0xdb, 0x1c, 0x8c, 0xbf, 0xcc, 0x42, 0x61, 0x73, 0xd0, 0x1b, 0xda, 0x2e, 0xdd, 0xa3,
+	0x3c, 0x81, 0x8f, 0xba, 0x3e, 0x53, 0xb7, 0xb2, 0x7e, 0x37, 0xca, 0x41, 0xa0, 0xc9, 0xbf, 0x16,
+	0x43, 0xb5, 0xc4, 0x12, 0xba, 0x58, 0x84, 0xe9, 0xcc, 0x25, 0x16, 0x8b, 0x20, 0x2d, 0x96, 0x48,
+	0x5f, 0xca, 0x86, 0xbe, 0x64, 0x42, 0x81, 0x2c, 0x0c, 0xaf, 0x16, 0xa2, 0x8b, 0x04, 0x10, 0xd7,
+	0xbd, 0xda, 0x72, 0x1d, 0x9b, 0xda, 0x43, 0x5e, 0x3f, 0x33, 0x02, 0xa7, 0xc2, 0x27, 0x2c, 0x79,
+	0x0d, 0xdd, 0x85, 0x72, 0x6f, 0xd0, 0x0e, 0xf1, 0xf2, 0x02, 0xaf, 0x44, 0xa0, 0x01, 0xd2, 0x0d,
+	0x19, 0x94, 0xe8, 0xbd, 0x50, 0x26, 0xb3, 0x7c, 0x88, 0xdf, 0x84, 0xb9, 0x88, 0xae, 0x34, 0xfc,
+	0x36, 0x3f, 0x78, 0x56, 0xdf, 0xe1, 0xb1, 0xfa, 0x09, 0x0b, 0xcf, 0x16, 0x89, 0xd5, 0x24, 0xe4,
+	0xef, 0x34, 0xf7, 0xf7, 0x49, 0x64, 0xff, 0xff, 0x60, 0x89, 0x08, 0xee, 0x4a, 0x4c, 0xbf, 0xa2,
+	0xc4, 0x74, 0x43, 0xc6, 0xf4, 0x4c, 0x18, 0xd3, 0xb3, 0x1b, 0x15, 0x28, 0x73, 0x83, 0x1c, 0x8d,
+	0xfa, 0x44, 0x30, 0xfc, 0x4b, 0x72, 0x2c, 0x0f, 0x5e, 0xf6, 0x65, 0xc4, 0xa9, 0x41, 0xa1, 0xc5,
+	0x89, 0x93, 0x0d, 0xa2, 0x0e, 0x7c, 0x5d, 0x6b, 0x63, 0x4b, 0x62, 0xa1, 0x37, 0xa1, 0xe0, 0x8d,
+	0x5a, 0x2d, 0xc7, 0x93, 0xf1, 0xfd, 0x95, 0x78, 0x0c, 0x11, 0x1e, 0x6e, 0x49, 0x3c, 0xba, 0xe4,
+	0xb9, 0xdd, 0xe9, 0x8e, 0x58, 0xb4, 0x9f, 0xbe, 0x44, 0xe0, 0xe1, 0x9f, 0x1b, 0x50, 0x62, 0x52,
+	0xa6, 0x0a, 0x5c, 0xcb, 0x50, 0x64, 0x32, 0x38, 0x6d, 0x11, 0xba, 0xc8, 0x0d, 0x1b, 0x00, 0xd0,
+	0xff, 0x90, 0xd0, 0x2a, 0xd6, 0xc9, 0xe8, 0x55, 0xd5, 0x93, 0x25, 0x92, 0x85, 0xa8, 0x78, 0x1b,
+	0xae, 0x31, 0xab, 0xb4, 0x68, 0x56, 0x26, 0xed, 0xa8, 0xe6, 0x2d, 0x46, 0x2c, 0x6f, 0x21, 0x73,
+	0xc3, 0xd3, 0x73, 0xaf, 0xd3, 0xb2, 0xbb, 0x42, 0x8a, 0x60, 0x8c, 0xbf, 0x05, 0x48, 0x25, 0x96,
+	0x46, 0x5d, 0x3c, 0x07, 0xa5, 0xf7, 0x6c, 0xef, 0x54, 0x88, 0x84, 0x3f, 0x82, 0x32, 0x1f, 0xa6,
+	0xb2, 0x21, 0xb9, 0xa7, 0x4f, 0x09, 0x15, 0x26, 0xf8, 0x9c, 0xc5, 0xbe, 0xf1, 0x35, 0xb8, 0xba,
+	0xdf, 0xb7, 0x87, 0xde, 0xe9, 0x40, 0x06, 0x57, 0x9a, 0x95, 0xce, 0x87, 0xb0, 0x54, 0x1c, 0x1f,
+	0xc2, 0x55, 0xd7, 0xe9, 0xd9, 0x9d, 0x7e, 0xa7, 0x7f, 0x72, 0x74, 0x7c, 0xee, 0x3b, 0x9e, 0x48,
+	0x5a, 0x2b, 0x01, 0x78, 0x83, 0x42, 0xa9, 0x68, 0xc7, 0xdd, 0xc1, 0xb1, 0x70, 0x71, 0xf6, 0x8d,
+	0x7f, 0x65, 0x40, 0xf9, 0x43, 0xdb, 0x6f, 0x49, 0x2b, 0xa0, 0x2d, 0xa8, 0x04, 0x8e, 0xcd, 0x20,
+	0x42, 0x96, 0x58, 0x84, 0x67, 0x6b, 0x36, 0x85, 0xa3, 0xcb, 0x08, 0x3f, 0xd7, 0x52, 0x01, 0x8c,
+	0x94, 0xdd, 0x6f, 0x39, 0xdd, 0x80, 0x54, 0x26, 0x99, 0x14, 0x43, 0x54, 0x49, 0xa9, 0x80, 0x8d,
+	0xab, 0xe1, 0xed, 0xc7, 0xdd, 0xf2, 0xcb, 0x0c, 0xa0, 0x49, 0x19, 0xbe, 0x6e, 0x42, 0x70, 0x1f,
+	0x2a, 0x1e, 0xf1, 0x76, 0xff, 0x28, 0x96, 0xd2, 0xcf, 0x31, 0x68, 0x10, 0x9c, 0x88, 0x85, 0x49,
+	0x2d, 0x71, 0x42, 0x8e, 0xb4, 0x77, 0x44, 0xca, 0x8b, 0xce, 0xf3, 0x73, 0x91, 0x0d, 0x55, 0x24,
+	0x78, 0x97, 0x41, 0x51, 0x93, 0x78, 0x6e, 0xa7, 0x4b, 0xd2, 0x7f, 0x8f, 0x44, 0xc3, 0x2c, 0x89,
+	0xc0, 0x8f, 0x2f, 0xb2, 0xda, 0xda, 0xbb, 0x0c, 0xff, 0xe0, 0x7c, 0x48, 0x62, 0x86, 0x58, 0xab,
+	0xe6, 0x29, 0xf9, 0x48, 0x9e, 0x72, 0x1f, 0x20, 0xc4, 0xa7, 0x51, 0x6b, 0x77, 0xef, 0xe9, 0xb3,
+	0x03, 0x12, 0xd5, 0xca, 0x30, 0xbb, 0xbb, 0xd7, 0x68, 0xee, 0x34, 0x69, 0x5c, 0xc3, 0x35, 0x69,
+	0x1b, 0xd5, 0x86, 0x68, 0x09, 0x66, 0x5f, 0x50, 0xa8, 0xac, 0x79, 0x48, 0x5e, 0xc2, 0xc6, 0x5b,
+	0x6d, 0xfc, 0x17, 0x92, 0xc8, 0x8a, 0x53, 0x90, 0xea, 0x28, 0xaa, 0x2c, 0x32, 0x11, 0x16, 0x34,
+	0x29, 0xe2, 0xa7, 0xa3, 0x2d, 0x72, 0x2f, 0x39, 0xa4, 0xee, 0xce, 0x37, 0x9b, 0x4c, 0x71, 0xb3,
+	0x06, 0x63, 0x72, 0xcd, 0xcc, 0xb7, 0xb8, 0xbb, 0xc7, 0xee, 0x19, 0xeb, 0xaa, 0x80, 0x07, 0x9b,
+	0x74, 0x1f, 0xf2, 0xce, 0xd8, 0xe9, 0xfb, 0x5e, 0xb5, 0xc4, 0x62, 0xd3, 0x9c, 0xcc, 0xac, 0x9a,
+	0x14, 0x6a, 0x89, 0x49, 0xfc, 0xdf, 0x70, 0x6d, 0x87, 0xa6, 0xb6, 0x4f, 0xc8, 0x21, 0x50, 0x93,
+	0xe4, 0x83, 0x83, 0x1d, 0x61, 0x95, 0xac, 0x7f, 0xb0, 0x83, 0x2a, 0x90, 0xd9, 0x6a, 0x08, 0x1d,
+	0x32, 0x9d, 0x06, 0xfe, 0xcc, 0x00, 0xa4, 0xae, 0x4b, 0x65, 0xa6, 0x18, 0x71, 0xc9, 0x3e, 0x1b,
+	0xb2, 0x27, 0xd9, 0xb8, 0xe3, 0xba, 0x03, 0x97, 0x19, 0xa4, 0x68, 0xf1, 0x01, 0xbe, 0x27, 0x64,
+	0x20, 0x3a, 0x0f, 0xce, 0x82, 0x33, 0xcf, 0xa9, 0x19, 0x81, 0xa8, 0xdb, 0xb0, 0x10, 0xc1, 0x4a,
+	0x15, 0x23, 0x1f, 0xc2, 0x75, 0x46, 0x6c, 0xdb, 0x71, 0x86, 0xf5, 0x6e, 0x67, 0x9c, 0xc8, 0x75,
+	0x08, 0x37, 0xe2, 0x88, 0xdf, 0xac, 0x8d, 0xf0, 0x29, 0xe4, 0xdf, 0x67, 0x55, 0xb9, 0x22, 0x4b,
+	0x8e, 0xe1, 0x92, 0x40, 0xd7, 0xb7, 0x7b, 0xbc, 0xc0, 0x29, 0x5a, 0xec, 0x9b, 0x5d, 0x2a, 0x8e,
+	0xe3, 0x3e, 0xb3, 0x76, 0xf8, 0xe5, 0x55, 0xb4, 0x82, 0x31, 0x5a, 0xa1, 0xfd, 0x80, 0x0e, 0x39,
+	0x1e, 0x6c, 0x36, 0xc7, 0x66, 0x15, 0x08, 0xa9, 0x2d, 0xe7, 0x39, 0xa7, 0x7a, 0xbb, 0xad, 0x5c,
+	0x60, 0x01, 0x3d, 0x23, 0x4a, 0x0f, 0xbf, 0x80, 0x6b, 0x0a, 0x7e, 0x2a, 0x33, 0xbc, 0x0e, 0x79,
+	0xde, 0x7a, 0x10, 0xb1, 0x73, 0x31, 0xba, 0x8a, 0xb3, 0xb1, 0x04, 0x0e, 0x89, 0x0f, 0x0b, 0x02,
+	0xe2, 0xf4, 0x06, 0xba, 0xbd, 0x62, 0xf6, 0xc1, 0x3b, 0xb0, 0x18, 0x45, 0x4b, 0x75, 0x44, 0xea,
+	0x92, 0xe9, 0xb3, 0x61, 0x5b, 0x09, 0xc5, 0xf1, 0x4d, 0x51, 0x0d, 0x96, 0x89, 0x19, 0x2c, 0x10,
+	0x48, 0x92, 0x48, 0x25, 0xd0, 0x82, 0x34, 0xff, 0x4e, 0xc7, 0x0b, 0x2e, 0xdc, 0x4f, 0x01, 0xa9,
+	0xc0, 0x54, 0x9b, 0xb2, 0x06, 0x05, 0x6e, 0x70, 0x99, 0xd3, 0xe9, 0x77, 0x45, 0x22, 0x51, 0x81,
+	0x1a, 0xce, 0x73, 0xd7, 0x3e, 0xe9, 0x39, 0x41, 0xcc, 0xa1, 0x99, 0x8c, 0x0a, 0x4c, 0xa5, 0xf1,
+	0xef, 0xc8, 0x2d, 0x5e, 0xef, 0xda, 0x6e, 0x4f, 0x1a, 0xff, 0x1d, 0xc8, 0xf3, 0x14, 0x49, 0x94,
+	0x11, 0x0f, 0xa2, 0x64, 0x54, 0x5c, 0x3e, 0xa8, 0xf3, 0x84, 0x4a, 0xac, 0xa2, 0x9b, 0x25, 0x3a,
+	0x5e, 0x8d, 0x58, 0x07, 0xac, 0x81, 0xde, 0x80, 0x19, 0x9b, 0x2e, 0x61, 0xbe, 0x58, 0x89, 0x27,
+	0xa7, 0x8c, 0x1a, 0xbb, 0xce, 0x38, 0x16, 0x7e, 0x1b, 0x4a, 0x0a, 0x07, 0x9a, 0x73, 0x3f, 0x69,
+	0x8a, 0x2b, 0xab, 0xbe, 0x79, 0xb0, 0x75, 0xc8, 0x53, 0xf1, 0x0a, 0x40, 0xa3, 0x19, 0x8c, 0x33,
+	0x24, 0x19, 0xe3, 0xab, 0x84, 0x87, 0xab, 0xf2, 0x18, 0x49, 0xf2, 0x64, 0x2e, 0x25, 0xcf, 0x4b,
+	0x98, 0x13, 0xea, 0xa7, 0x3a, 0x03, 0x6f, 0x12, 0x0b, 0x53, 0x32, 0xf2, 0x08, 0x2c, 0x69, 0xd8,
+	0x4a, 0xef, 0xe4, 0x88, 0x98, 0x24, 0x31, 0xfb, 0xbe, 0xed, 0x8f, 0x3c, 0x79, 0x04, 0x7e, 0x6b,
+	0x40, 0x45, 0x42, 0xd2, 0x76, 0x1c, 0x64, 0xa5, 0xc6, 0x63, 0x5e, 0x50, 0xa7, 0xdd, 0x80, 0x7c,
+	0xfb, 0x78, 0xbf, 0xf3, 0xa9, 0xec, 0xeb, 0x88, 0x11, 0x85, 0x77, 0x39, 0x1f, 0xde, 0xa7, 0x14,
+	0x23, 0x5a, 0x02, 0xd0, 0x8e, 0xe5, 0x56, 0xbf, 0xed, 0xbc, 0x64, 0x37, 0x6d, 0xce, 0x0a, 0x01,
+	0x2c, 0x6b, 0x17, 0xfd, 0x4c, 0x96, 0x99, 0xa8, 0xfd, 0x4d, 0x72, 0xc8, 0xeb, 0x23, 0xff, 0xb4,
+	0xd9, 0xa7, 0xad, 0x3c, 0xa9, 0xe1, 0x22, 0x20, 0x0a, 0x6c, 0x74, 0x3c, 0x15, 0xda, 0x84, 0x05,
+	0x0a, 0x25, 0xe7, 0x9e, 0xe4, 0xf4, 0x61, 0xc4, 0x90, 0x61, 0xdb, 0x88, 0x85, 0x6d, 0xdb, 0xf3,
+	0x5e, 0x0c, 0xdc, 0xb6, 0x50, 0x2d, 0x18, 0xe3, 0x06, 0x27, 0xfe, 0xcc, 0x8b, 0x04, 0xe6, 0xaf,
+	0x4b, 0xe5, 0x51, 0x48, 0xe5, 0x89, 0xe3, 0x4f, 0xa1, 0x82, 0x1f, 0xc3, 0x75, 0x89, 0x29, 0x4a,
+	0xf9, 0x29, 0xc8, 0x7b, 0x70, 0x4b, 0x22, 0x6f, 0x9e, 0xd2, 0x7c, 0xf3, 0xa9, 0x60, 0xf8, 0xef,
+	0xca, 0xb9, 0x01, 0xd5, 0x40, 0x4e, 0x96, 0x83, 0x0c, 0xba, 0xaa, 0x00, 0x23, 0x4f, 0x9c, 0x19,
+	0x42, 0x8b, 0x7e, 0x53, 0x98, 0x4b, 0x50, 0xe4, 0x25, 0x48, 0xbf, 0xf1, 0x26, 0x2c, 0x49, 0x1a,
+	0x22, 0x3b, 0x88, 0x12, 0x99, 0x10, 0x48, 0x47, 0x44, 0x18, 0x8c, 0x2e, 0x9d, 0x6e, 0x76, 0x15,
+	0x33, 0x6a, 0x5a, 0x46, 0xd3, 0x50, 0x68, 0x5e, 0xe7, 0x27, 0x82, 0x0a, 0xa6, 0x06, 0x6d, 0x01,
+	0xa6, 0x04, 0x54, 0xb0, 0xd8, 0x08, 0x0a, 0x9e, 0xd8, 0x88, 0x09, 0xd2, 0x1f, 0xc3, 0x4a, 0x20,
+	0x04, 0xb5, 0xdb, 0x53, 0x72, 0x58, 0x3b, 0x9e, 0xa7, 0xd4, 0xa2, 0x3a, 0xc5, 0x1f, 0x40, 0x6e,
+	0xe8, 0x88, 0x98, 0x52, 0x5a, 0x47, 0x6b, 0xfc, 0xd5, 0x61, 0x4d, 0x59, 0xcc, 0xe6, 0x71, 0x1b,
+	0x6e, 0x4b, 0xea, 0xdc, 0xa2, 0x5a, 0xf2, 0x71, 0xa1, 0x64, 0x9d, 0xc2, 0xcd, 0x3a, 0x59, 0xa7,
+	0x64, 0xf9, 0xde, 0xcb, 0x3a, 0x85, 0xde, 0x15, 0xaa, 0x6f, 0xa5, 0xba, 0x2b, 0xb6, 0xb9, 0x4d,
+	0x03, 0x97, 0x4c, 0x45, 0xec, 0x18, 0x16, 0xa3, 0x9e, 0x9c, 0x2a, 0x8c, 0x91, 0xac, 0xd7, 0x27,
+	0x26, 0x94, 0x41, 0x8c, 0x0f, 0xa4, 0xc0, 0x81, 0x9b, 0xa7, 0x12, 0xd8, 0x0e, 0x89, 0xb1, 0x23,
+	0x99, 0x56, 0x5e, 0xba, 0x9b, 0x32, 0x9f, 0xe1, 0x03, 0xbc, 0x0b, 0x37, 0xe2, 0x61, 0x22, 0x95,
+	0xc8, 0x87, 0xfc, 0x00, 0xeb, 0x22, 0x49, 0x2a, 0xba, 0x1f, 0x84, 0xc1, 0x40, 0x09, 0x28, 0xa9,
+	0x48, 0x5a, 0x60, 0xea, 0xe2, 0xcb, 0x7f, 0xe2, 0xbc, 0x06, 0xe1, 0x26, 0x15, 0x31, 0x2f, 0x24,
+	0x96, 0x7e, 0xfb, 0xc3, 0x18, 0x91, 0x9d, 0x1a, 0x23, 0x84, 0x93, 0x84, 0x51, 0xec, 0x1b, 0x38,
+	0x74, 0x82, 0x47, 0x18, 0x40, 0xd3, 0xf2, 0xa0, 0x77, 0x48, 0xc0, 0x83, 0x0d, 0xe4, 0xc1, 0x56,
+	0xc3, 0x6e, 0xaa, 0xcd, 0xf8, 0x30, 0x8c, 0x9d, 0x13, 0x91, 0x39, 0x15, 0xe1, 0x8f, 0x60, 0x35,
+	0x39, 0x28, 0xa7, 0xa1, 0xfc, 0x1a, 0x86, 0x62, 0x90, 0x50, 0x2a, 0xaf, 0x8c, 0x25, 0x28, 0xec,
+	0xee, 0xed, 0x3f, 0xad, 0x6f, 0x92, 0x54, 0x76, 0xfd, 0x1f, 0x59, 0xc8, 0x6c, 0x1f, 0xa2, 0xef,
+	0xc0, 0x0c, 0x7f, 0x83, 0x98, 0xf2, 0x44, 0x63, 0x4e, 0x7b, 0xcd, 0xc0, 0xcb, 0x9f, 0xfd, 0xfe,
+	0xcf, 0x5f, 0x64, 0x6e, 0xe0, 0x6b, 0xb5, 0xf1, 0x5b, 0x76, 0x77, 0x78, 0x6a, 0xd7, 0xce, 0xc6,
+	0x35, 0x76, 0x27, 0xfc, 0xaf, 0xf1, 0x1a, 0x3a, 0x84, 0x2c, 0x7d, 0xa1, 0x48, 0x7c, 0xbf, 0x31,
+	0x93, 0x5f, 0x39, 0xb0, 0xc9, 0x28, 0x2f, 0xe2, 0xab, 0x2a, 0xe5, 0xe1, 0xc8, 0xa7, 0x74, 0xc7,
+	0x50, 0x52, 0x1e, 0x2a, 0xd0, 0x85, 0x2f, 0x3b, 0xe6, 0xc5, 0x8f, 0x20, 0x18, 0x33, 0x7e, 0xcb,
+	0xf8, 0x15, 0x95, 0x1f, 0x7f, 0x4f, 0x51, 0xf5, 0x39, 0x78, 0xd9, 0x8f, 0xeb, 0x13, 0xb6, 0xde,
+	0xe3, 0xfa, 0x28, 0xed, 0x6e, 0xbd, 0x3e, 0xfe, 0xcb, 0x3e, 0xa5, 0x3b, 0x10, 0x8f, 0x2b, 0x2d,
+	0x1f, 0xdd, 0xd6, 0xf4, 0xea, 0xd5, 0xae, 0xb4, 0xb9, 0x9a, 0x8c, 0x20, 0x38, 0xdd, 0x61, 0x9c,
+	0x6e, 0xe2, 0x1b, 0x2a, 0xa7, 0x56, 0x80, 0x47, 0x18, 0xae, 0x9f, 0xc2, 0x0c, 0xeb, 0xa5, 0xa1,
+	0x23, 0xf9, 0x61, 0x6a, 0xba, 0x80, 0x09, 0x27, 0x20, 0xd2, 0x85, 0xc3, 0x4b, 0x8c, 0xdb, 0x02,
+	0xae, 0x04, 0xdc, 0x58, 0x3b, 0x8d, 0x70, 0x79, 0x64, 0xfc, 0x97, 0xb1, 0xfe, 0xf7, 0x0c, 0xcc,
+	0xb0, 0xa6, 0x0b, 0x1a, 0x02, 0x84, 0xdd, 0xa9, 0xb8, 0x9e, 0x13, 0xfd, 0xae, 0xb8, 0x9e, 0x93,
+	0x8d, 0x2d, 0x7c, 0x9b, 0x71, 0x5e, 0xc2, 0x8b, 0x01, 0x67, 0xf6, 0x20, 0x5c, 0x3b, 0xa1, 0x58,
+	0xd4, 0xac, 0x2f, 0xa0, 0xa4, 0x74, 0x99, 0x90, 0x8e, 0x62, 0xa4, 0x4d, 0x15, 0x3f, 0x26, 0x9a,
+	0x16, 0x15, 0xbe, 0xcb, 0x98, 0xde, 0xc2, 0x55, 0xd5, 0xb8, 0x9c, 0xaf, 0xcb, 0x30, 0x29, 0xe3,
+	0x1f, 0x92, 0xa2, 0x29, 0xda, 0x69, 0x42, 0x77, 0x35, 0xa4, 0xe3, 0x0d, 0x2b, 0xf3, 0xde, 0x74,
+	0xa4, 0x44, 0x11, 0x38, 0xff, 0x33, 0x82, 0x69, 0x53, 0x4c, 0x69, 0xfb, 0x7f, 0xd2, 0x47, 0x3b,
+	0xfe, 0x93, 0x11, 0xe4, 0x43, 0x31, 0xe8, 0xf7, 0xa0, 0x15, 0x5d, 0x2f, 0x20, 0x4c, 0x94, 0xcd,
+	0xdb, 0x89, 0xf3, 0x42, 0x84, 0x07, 0x4c, 0x84, 0x55, 0x7c, 0x33, 0x10, 0x41, 0xfc, 0x34, 0xa5,
+	0xc6, 0x4b, 0xde, 0x9a, 0xdd, 0x6e, 0x53, 0x43, 0xfc, 0x80, 0x14, 0xfd, 0x6a, 0x1b, 0x07, 0xdd,
+	0xd1, 0x76, 0x21, 0xd4, 0x4e, 0x90, 0x89, 0xa7, 0xa1, 0x08, 0xfe, 0xaf, 0x32, 0xfe, 0x77, 0xf1,
+	0x4a, 0x12, 0x7f, 0x97, 0xe1, 0x47, 0x45, 0xe0, 0x8d, 0x1b, 0xbd, 0x08, 0x91, 0xbe, 0x90, 0x5e,
+	0x84, 0x68, 0xdf, 0xe7, 0x62, 0x11, 0x46, 0x0c, 0x9f, 0x8a, 0xf0, 0x12, 0x20, 0xec, 0xeb, 0x20,
+	0xad, 0x71, 0x95, 0xd2, 0x21, 0x7e, 0xf2, 0x27, 0x5b, 0x42, 0xf8, 0x21, 0xe3, 0x7d, 0x07, 0x2f,
+	0x27, 0xf1, 0xee, 0x12, 0x6c, 0xea, 0xe7, 0xbf, 0xce, 0x41, 0xe9, 0x7d, 0xbb, 0xd3, 0xf7, 0x9d,
+	0x3e, 0x6d, 0x57, 0xa3, 0x13, 0x98, 0x61, 0x77, 0x43, 0xdc, 0xdd, 0xd5, 0x66, 0x4b, 0xdc, 0xdd,
+	0x23, 0x9d, 0x08, 0x7c, 0x9f, 0xb1, 0xbe, 0x8d, 0xcd, 0x80, 0x75, 0x2f, 0xa4, 0x5f, 0x63, 0x5d,
+	0x04, 0xaa, 0xf2, 0x19, 0xe4, 0x79, 0xd7, 0x00, 0xc5, 0xa8, 0x45, 0xba, 0x0b, 0xe6, 0xb2, 0x7e,
+	0x32, 0xf1, 0x94, 0xa9, 0xbc, 0x3c, 0x86, 0x4c, 0x99, 0x7d, 0x17, 0x20, 0x6c, 0x53, 0xc5, 0xed,
+	0x3b, 0xd1, 0xd5, 0x32, 0x57, 0x93, 0x11, 0x04, 0xe3, 0xd7, 0x18, 0xe3, 0x7b, 0xf8, 0xb6, 0x96,
+	0x71, 0x3b, 0x58, 0x40, 0x99, 0xb7, 0x20, 0x47, 0x9f, 0xe4, 0x50, 0x2c, 0xf4, 0x2b, 0xaf, 0x76,
+	0xa6, 0xa9, 0x9b, 0x12, 0xac, 0xee, 0x31, 0x56, 0x2b, 0x78, 0x49, 0xcb, 0x8a, 0x3e, 0xcd, 0x51,
+	0x26, 0x23, 0x98, 0x95, 0x2f, 0x71, 0xe8, 0x56, 0xcc, 0x66, 0xd1, 0x57, 0x3b, 0x73, 0x25, 0x69,
+	0x5a, 0x30, 0x7c, 0xc4, 0x18, 0x62, 0x7c, 0x4b, 0x6f, 0x54, 0x81, 0x4e, 0x98, 0x92, 0x00, 0xf2,
+	0xe3, 0x79, 0xc8, 0xd1, 0x2c, 0x85, 0xc6, 0xee, 0xb0, 0xb8, 0x8b, 0x5b, 0x78, 0xa2, 0xa5, 0x12,
+	0xb7, 0xf0, 0x64, 0x5d, 0xa8, 0x89, 0xdd, 0xec, 0x87, 0x73, 0x0e, 0xc3, 0xa2, 0x1a, 0xfb, 0x50,
+	0x52, 0x4a, 0x40, 0xa4, 0xa1, 0x18, 0x6d, 0xd8, 0xc4, 0x63, 0xb7, 0xa6, 0x7e, 0xc4, 0xab, 0x8c,
+	0xa9, 0x89, 0xaf, 0x47, 0x99, 0xb6, 0x39, 0x1a, 0xe5, 0xfa, 0x3d, 0x28, 0xab, 0xb5, 0x22, 0xd2,
+	0x10, 0x8d, 0x75, 0x84, 0xe2, 0xb1, 0x42, 0x57, 0x6a, 0x6a, 0x9c, 0x26, 0xf8, 0x99, 0xa0, 0xc4,
+	0xa5, 0xdc, 0x3f, 0x81, 0x82, 0xa8, 0x20, 0x75, 0xfa, 0x46, 0x7b, 0x48, 0x3a, 0x7d, 0x63, 0xe5,
+	0xa7, 0x26, 0x11, 0x60, 0x6c, 0x69, 0xa6, 0x2c, 0x03, 0xb4, 0x60, 0x49, 0x0a, 0x8d, 0x24, 0x96,
+	0x61, 0x57, 0x24, 0x89, 0xa5, 0x52, 0xa5, 0x4c, 0x65, 0x79, 0xe2, 0xf8, 0xe2, 0x2c, 0xcb, 0x12,
+	0x00, 0x25, 0x50, 0x54, 0xa3, 0x21, 0x9e, 0x86, 0x92, 0x98, 0xbb, 0x85, 0x5c, 0x45, 0x28, 0x44,
+	0xdf, 0x07, 0x08, 0xcb, 0xdd, 0xf8, 0x75, 0xac, 0xed, 0x99, 0xc5, 0xaf, 0x63, 0x7d, 0xc5, 0xac,
+	0xf1, 0xe0, 0x90, 0x39, 0xcf, 0x1f, 0x29, 0xfb, 0x9f, 0x1a, 0x80, 0x26, 0xcb, 0x63, 0xf4, 0x58,
+	0xcf, 0x42, 0xdb, 0x8e, 0x33, 0x5f, 0xbf, 0x1c, 0x72, 0x62, 0xf4, 0x0c, 0xe5, 0x6a, 0xb1, 0x25,
+	0xc3, 0x17, 0x54, 0xb2, 0xcf, 0x0d, 0x98, 0x8b, 0x14, 0xd8, 0xe8, 0x41, 0xc2, 0x3e, 0xc7, 0x5a,
+	0x7a, 0xe6, 0xc3, 0x0b, 0xf1, 0x12, 0x33, 0x16, 0xe5, 0x54, 0xc8, 0x6c, 0xed, 0x47, 0x24, 0x69,
+	0x8a, 0x56, 0xe5, 0x28, 0x81, 0xc1, 0x44, 0x5f, 0xd0, 0x7c, 0x74, 0x31, 0xe2, 0x25, 0x76, 0x2b,
+	0x4c, 0xe0, 0x88, 0x5b, 0x88, 0x62, 0x5e, 0xe7, 0x16, 0xd1, 0xb6, 0xa2, 0xce, 0x2d, 0x62, 0x9d,
+	0x80, 0x24, 0xb7, 0xa0, 0x75, 0xb1, 0xe2, 0x89, 0xa2, 0xe4, 0x4f, 0x62, 0x39, 0xdd, 0x13, 0x63,
+	0xfd, 0x82, 0xa9, 0x2c, 0x43, 0x4f, 0x94, 0x05, 0x3f, 0x4a, 0xa0, 0x78, 0x81, 0x27, 0xc6, 0xfb,
+	0x05, 0x49, 0x9e, 0xc8, 0xb8, 0x2a, 0x9e, 0x18, 0xd6, 0xe7, 0x3a, 0x4f, 0x9c, 0x68, 0x9a, 0xea,
+	0x3c, 0x71, 0xb2, 0xc4, 0x4f, 0xda, 0x5b, 0xc6, 0x3c, 0xe2, 0x89, 0x0b, 0x9a, 0x7a, 0x1e, 0xbd,
+	0x9e, 0x60, 0x53, 0x6d, 0x43, 0xd6, 0x7c, 0xe3, 0x92, 0xd8, 0xd3, 0x3d, 0x80, 0xef, 0x86, 0xf4,
+	0x80, 0x5f, 0x18, 0xb0, 0xa8, 0x6b, 0x08, 0xa0, 0x04, 0x66, 0x09, 0xdd, 0x5c, 0x73, 0xed, 0xb2,
+	0xe8, 0x97, 0xb0, 0x5b, 0xe0, 0x13, 0x1b, 0xf3, 0xbf, 0xf9, 0xe3, 0x8a, 0xf1, 0x15, 0xf9, 0xf7,
+	0x07, 0xf2, 0xef, 0x67, 0x7f, 0x5a, 0xb9, 0x72, 0x9c, 0x67, 0xbf, 0x5e, 0x7f, 0xeb, 0x5f, 0x01,
+	0x00, 0x00, 0xff, 0xff, 0x66, 0x40, 0x0b, 0xdf, 0x44, 0x2f, 0x00, 0x00,
+}

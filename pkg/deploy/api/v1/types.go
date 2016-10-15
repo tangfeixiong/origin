@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"fmt"
+
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/util/intstr"
@@ -171,11 +173,6 @@ type RollingDeploymentStrategyParams struct {
 	// pods running at any time during the update is atmost 130% of original
 	// pods.
 	MaxSurge *intstr.IntOrString `json:"maxSurge,omitempty" protobuf:"bytes,5,opt,name=maxSurge"`
-	// UpdatePercent is the percentage of replicas to scale up or down each
-	// interval. If nil, one replica will be scaled up and down each interval.
-	// If negative, the scale order will be down/up instead of up/down.
-	// DEPRECATED: Use MaxUnavailable/MaxSurge instead.
-	UpdatePercent *int32 `json:"updatePercent,omitempty" protobuf:"varint,6,opt,name=updatePercent"`
 	// Pre is a lifecycle hook which is executed before the deployment process
 	// begins. All LifecycleHookFailurePolicy values are supported.
 	Pre *LifecycleHook `json:"pre,omitempty" protobuf:"bytes,7,opt,name=pre"`
@@ -236,10 +233,15 @@ const (
 
 // +genclient=true
 
-// DeploymentConfig represents a configuration for a single deployment (represented as a
-// ReplicationController). It also contains details about changes which resulted in the current
-// state of the DeploymentConfig. Each change to the DeploymentConfig which should result in
-// a new deployment results in an increment of LatestVersion.
+// Deployment Configs define the template for a pod and manages deploying new images or configuration changes.
+// A single deployment configuration is usually analogous to a single micro-service. Can support many different
+// deployment patterns, including full restart, customizable rolling updates, and  fully custom behaviors, as
+// well as pre- and post- deployment hooks. Each individual deployment is represented as a replication controller.
+//
+// A deployment is "triggered" when its configuration is changed or a tag in an Image Stream is changed.
+// Triggers can be disabled to allow manual control over a deployment. The "strategy" determines how the deployment
+// is carried out and may be changed at any time. The `latestVersion` field is updated when a new deployment
+// is triggered by any means.
 type DeploymentConfig struct {
 	unversioned.TypeMeta `json:",inline"`
 	// Standard object's metadata.
@@ -254,7 +256,12 @@ type DeploymentConfig struct {
 
 // DeploymentTriggerPolicies is a list of policies where nil values and different from empty arrays.
 // +protobuf.nullable=true
+// +protobuf.options.(gogoproto.goproto_stringer)=false
 type DeploymentTriggerPolicies []DeploymentTriggerPolicy
+
+func (t DeploymentTriggerPolicies) String() string {
+	return fmt.Sprintf("%v", []DeploymentTriggerPolicy(t))
+}
 
 // DeploymentConfigSpec represents the desired state of the deployment.
 type DeploymentConfigSpec struct {
@@ -314,6 +321,8 @@ type DeploymentConfigStatus struct {
 	// Details are the reasons for the update to this deployment config.
 	// This could be based on a change made by the user or caused by an automatic trigger
 	Details *DeploymentDetails `json:"details,omitempty" protobuf:"bytes,7,opt,name=details"`
+	// Conditions represents the latest available observations of a deployment config's current state.
+	Conditions []DeploymentCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,8,rep,name=conditions"`
 }
 
 // DeploymentTriggerPolicy describes a policy for a single trigger that results in a new deployment.
@@ -339,9 +348,7 @@ const (
 // DeploymentTriggerImageChangeParams represents the parameters to the ImageChange trigger.
 type DeploymentTriggerImageChangeParams struct {
 	// Automatic means that the detection of a new tag value should result in an image update
-	// inside the pod template. Deployment configs that haven't been deployed yet will always
-	// have their images updated. Deployment configs that have been deployed at least once, will
-	// have their images updated only if this is set to true.
+	// inside the pod template.
 	Automatic bool `json:"automatic,omitempty" protobuf:"varint,1,opt,name=automatic"`
 	// ContainerNames is used to restrict tag updates to the specified set of container names in a pod.
 	ContainerNames []string `json:"containerNames,omitempty" protobuf:"bytes,2,rep,name=containerNames"`
@@ -375,6 +382,37 @@ type DeploymentCauseImageTrigger struct {
 	// From is a reference to the changed object which triggered a deployment. The field may have
 	// the kinds DockerImage, ImageStreamTag, or ImageStreamImage.
 	From kapi.ObjectReference `json:"from" protobuf:"bytes,1,opt,name=from"`
+}
+
+type DeploymentConditionType string
+
+// These are valid conditions of a deployment config.
+const (
+	// DeploymentAvailable means the deployment config is available, ie. at least the minimum available
+	// replicas required are up and running for at least minReadySeconds.
+	DeploymentAvailable DeploymentConditionType = "Available"
+	// DeploymentProgressing means the deployment config is progressing. Progress for a deployment
+	// config is considered when a new replica set is created or adopted, and when new pods scale up or
+	// old pods scale down. Progress is not estimated for paused deployment configs, when the deployment
+	// config needs to rollback, or when progressDeadlineSeconds is not specified.
+	DeploymentProgressing DeploymentConditionType = "Progressing"
+	// DeploymentReplicaFailure is added in a deployment config when one of its pods
+	// fails to be created or deleted.
+	DeploymentReplicaFailure DeploymentConditionType = "ReplicaFailure"
+)
+
+// DeploymentCondition describes the state of a deployment config at a certain point.
+type DeploymentCondition struct {
+	// Type of deployment condition.
+	Type DeploymentConditionType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=DeploymentConditionType"`
+	// Status of the condition, one of True, False, Unknown.
+	Status kapi.ConditionStatus `json:"status" protobuf:"bytes,2,opt,name=status,casttype=k8s.io/kubernetes/pkg/api/v1.ConditionStatus"`
+	// The last time the condition transitioned from one status to another.
+	LastTransitionTime unversioned.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,3,opt,name=lastTransitionTime"`
+	// The reason for the condition's last transition.
+	Reason string `json:"reason,omitempty" protobuf:"bytes,4,opt,name=reason"`
+	// A human readable message indicating details about the transition.
+	Message string `json:"message,omitempty" protobuf:"bytes,5,opt,name=message"`
 }
 
 // DeploymentConfigList is a collection of deployment configs.
@@ -412,6 +450,18 @@ type DeploymentConfigRollbackSpec struct {
 	IncludeReplicationMeta bool `json:"includeReplicationMeta" protobuf:"varint,5,opt,name=includeReplicationMeta"`
 	// IncludeStrategy specifies whether to include the deployment Strategy.
 	IncludeStrategy bool `json:"includeStrategy" protobuf:"varint,6,opt,name=includeStrategy"`
+}
+
+// DeploymentRequest is a request to a deployment config for a new deployment.
+type DeploymentRequest struct {
+	unversioned.TypeMeta `json:",inline"`
+	// Name of the deployment config for requesting a new deployment.
+	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
+	// Latest will update the deployment config with the latest state from all triggers.
+	Latest bool `json:"latest" protobuf:"varint,2,opt,name=latest"`
+	// Force will try to force a new deployment to run. If the deployment config is paused,
+	// then setting this to true will return an Invalid error.
+	Force bool `json:"force" protobuf:"varint,3,opt,name=force"`
 }
 
 // DeploymentLog represents the logs for a deployment

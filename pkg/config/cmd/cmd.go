@@ -85,10 +85,6 @@ func (b *Bulk) Run(list *kapi.List, namespace string) []error {
 	return errs
 }
 
-func NewPrintNameOrErrorAfter(mapper meta.RESTMapper, short bool, operation string, out, errs io.Writer) AfterFunc {
-	return NewPrintNameOrErrorAfterIndent(mapper, short, operation, out, errs, "")
-}
-
 func NewPrintNameOrErrorAfterIndent(mapper meta.RESTMapper, short bool, operation string, out, errs io.Writer, indent string) AfterFunc {
 	return func(info *resource.Info, err error) bool {
 		if err == nil {
@@ -165,6 +161,8 @@ func (b *BulkAction) BindForAction(flags *pflag.FlagSet) {
 func (b *BulkAction) BindForOutput(flags *pflag.FlagSet) {
 	flags.StringVarP(&b.Output, "output", "o", "", "Output results as yaml or json instead of executing, or use name for succint output (resource/name).")
 	flags.BoolVar(&b.DryRun, "dry-run", false, "If true, show the result of the operation without performing it.")
+	flags.Bool("no-headers", false, "Omit table headers for default output.")
+	flags.MarkHidden("no-headers")
 }
 
 // Compact sets the output to a minimal set

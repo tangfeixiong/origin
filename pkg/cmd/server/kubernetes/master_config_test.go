@@ -18,6 +18,7 @@ import (
 	"k8s.io/kubernetes/pkg/storage/storagebackend"
 	utilconfig "k8s.io/kubernetes/pkg/util/config"
 	"k8s.io/kubernetes/pkg/util/diff"
+	scheduleroptions "k8s.io/kubernetes/plugin/cmd/kube-scheduler/app/options"
 
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 )
@@ -43,23 +44,23 @@ func TestAPIServerDefaults(t *testing.T) {
 			EnableProfiling:        true,
 			EnableWatchCache:       true,
 			MinRequestTimeout:      1800,
+			ServiceNodePortRange:   genericapiserveroptions.DefaultServiceNodePortRange,
 			RuntimeConfig:          utilconfig.ConfigurationMap{},
 			StorageVersions:        registered.AllPreferredGroupVersions(),
 			MasterCount:            1,
 			DefaultStorageVersions: registered.AllPreferredGroupVersions(),
 			StorageConfig: storagebackend.Config{
-				Prefix: "/registry",
+				ServerList: nil,
+				Prefix:     "/registry",
 				DeserializationCacheSize: genericapiserveroptions.DefaultDeserializationCacheSize,
 			},
-			DefaultStorageMediaType: "application/json",
-			AdmissionControl:        "AlwaysAdmit",
-			AuthorizationMode:       "AlwaysAllow",
-			DeleteCollectionWorkers: 1,
-			MasterServiceNamespace:  "default",
-			AuthorizationConfig: genericapiserveroptions.AuthorizationConfig{
-				WebhookCacheAuthorizedTTL:   5 * time.Minute,
-				WebhookCacheUnauthorizedTTL: 30 * time.Second,
-			},
+			DefaultStorageMediaType:                  "application/json",
+			AdmissionControl:                         "AlwaysAdmit",
+			AuthorizationMode:                        "AlwaysAllow",
+			DeleteCollectionWorkers:                  1,
+			MasterServiceNamespace:                   "default",
+			AuthorizationWebhookCacheAuthorizedTTL:   5 * time.Minute,
+			AuthorizationWebhookCacheUnauthorizedTTL: 30 * time.Second,
 		},
 		EventTTL: 1 * time.Hour,
 		KubeletConfig: kubeletclient.KubeletClientConfig{
@@ -95,6 +96,8 @@ func TestCMServerDefaults(t *testing.T) {
 			ConcurrentDeploymentSyncs:         5,
 			ConcurrentNamespaceSyncs:          2,
 			ConcurrentSATokenSyncs:            5,
+			ConcurrentServiceSyncs:            1,
+			ConcurrentGCSyncs:                 20,
 			LookupCacheSizeForRC:              4096,
 			LookupCacheSizeForRS:              4096,
 			LookupCacheSizeForDaemonSet:       1024,
@@ -131,10 +134,51 @@ func TestCMServerDefaults(t *testing.T) {
 			KubeAPIQPS:   20.0,
 			KubeAPIBurst: 30,
 			LeaderElection: componentconfig.LeaderElectionConfiguration{
-				LeaderElect:   false,
+				LeaderElect:   true,
 				LeaseDuration: unversioned.Duration{Duration: 15 * time.Second},
 				RenewDeadline: unversioned.Duration{Duration: 10 * time.Second},
 				RetryPeriod:   unversioned.Duration{Duration: 2 * time.Second},
+			},
+			ClusterSigningCertFile: "/etc/kubernetes/ca/ca.pem",
+			ClusterSigningKeyFile:  "/etc/kubernetes/ca/ca.key",
+			EnableGarbageCollector: true,
+		},
+	}
+
+	if !reflect.DeepEqual(defaults, expectedDefaults) {
+		t.Logf("expected defaults, actual defaults: \n%s", diff.ObjectReflectDiff(expectedDefaults, defaults))
+		t.Errorf("Got different defaults than expected, adjust in BuildKubernetesMasterConfig and update expectedDefaults")
+	}
+}
+
+func TestSchedulerServerDefaults(t *testing.T) {
+	defaults := scheduleroptions.NewSchedulerServer()
+
+	// This is a snapshot of the default config
+	// If the default changes (new fields are added, or default values change), we want to know
+	// Once we've reacted to the changes appropriately in BuildKubernetesMasterConfig(), update this expected default to match the new upstream defaults
+	expectedDefaults := &scheduleroptions.SchedulerServer{
+		KubeSchedulerConfiguration: componentconfig.KubeSchedulerConfiguration{
+			Port:                           10251, // disabled
+			Address:                        "0.0.0.0",
+			AlgorithmProvider:              "DefaultProvider",
+			ContentType:                    "application/vnd.kubernetes.protobuf",
+			KubeAPIQPS:                     50,
+			KubeAPIBurst:                   100,
+			SchedulerName:                  "default-scheduler",
+			HardPodAffinitySymmetricWeight: 1,
+			FailureDomains:                 "kubernetes.io/hostname,failure-domain.beta.kubernetes.io/zone,failure-domain.beta.kubernetes.io/region",
+			LeaderElection: componentconfig.LeaderElectionConfiguration{
+				LeaderElect: true,
+				LeaseDuration: unversioned.Duration{
+					Duration: 15 * time.Second,
+				},
+				RenewDeadline: unversioned.Duration{
+					Duration: 10 * time.Second,
+				},
+				RetryPeriod: unversioned.Duration{
+					Duration: 2 * time.Second,
+				},
 			},
 		},
 	}

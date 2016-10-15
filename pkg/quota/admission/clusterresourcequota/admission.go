@@ -11,6 +11,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/admission"
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/quota"
 	utilwait "k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/plugin/pkg/admission/resourcequota"
@@ -23,7 +24,7 @@ import (
 )
 
 func init() {
-	admission.RegisterPlugin("ClusterResourceQuota",
+	admission.RegisterPlugin("openshift.io/ClusterResourceQuota",
 		func(client clientset.Interface, config io.Reader) (admission.Interface, error) {
 			return NewClusterResourceQuota()
 		})
@@ -35,7 +36,7 @@ type clusterQuotaAdmission struct {
 
 	// these are used to create the accessor
 	clusterQuotaLister *ocache.IndexerToClusterResourceQuotaLister
-	namespaceLister    *ocache.IndexerToNamespaceLister
+	namespaceLister    *cache.IndexerToNamespaceLister
 	clusterQuotaSynced func() bool
 	namespaceSynced    func() bool
 	clusterQuotaClient oclient.ClusterResourceQuotasInterface
@@ -65,7 +66,7 @@ const (
 // are persisted by the server this admission controller is intercepting
 func NewClusterResourceQuota() (admission.Interface, error) {
 	return &clusterQuotaAdmission{
-		Handler:     admission.NewHandler(admission.Create),
+		Handler:     admission.NewHandler(admission.Create, admission.Update),
 		lockFactory: NewDefaultLockFactory(),
 	}, nil
 }

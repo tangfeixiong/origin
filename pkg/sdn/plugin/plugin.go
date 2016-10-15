@@ -11,8 +11,10 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/apis/componentconfig"
+	"k8s.io/kubernetes/pkg/fields"
 	kubeletTypes "k8s.io/kubernetes/pkg/kubelet/container"
 	knetwork "k8s.io/kubernetes/pkg/kubelet/network"
+	"k8s.io/kubernetes/pkg/labels"
 	utilsets "k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -23,6 +25,7 @@ const (
 	IngressBandwidthAnnotation string = "kubernetes.io/ingress-bandwidth"
 	EgressBandwidthAnnotation  string = "kubernetes.io/egress-bandwidth"
 	AssignMacVlanAnnotation    string = "pod.network.openshift.io/assign-macvlan"
+	AssignHostSubnetAnnotation string = "pod.network.openshift.io/assign-subnet"
 )
 
 func IsOpenShiftNetworkPlugin(pluginName string) bool {
@@ -53,7 +56,7 @@ func (plugin *OsdnNode) getExecutable() string {
 	return "openshift-sdn-ovs"
 }
 
-func (plugin *OsdnNode) Init(host knetwork.Host, _ componentconfig.HairpinMode, _ string) error {
+func (plugin *OsdnNode) Init(host knetwork.Host, _ componentconfig.HairpinMode, _ string, _ int) error {
 	return nil
 }
 
@@ -153,13 +156,32 @@ func getScriptError(output []byte) string {
 	return string(output)
 }
 
+func (plugin *OsdnNode) getPod(nodeName, namespace, podName string) (*kapi.Pod, error) {
+	fieldSelector := fields.Set{"spec.nodeName": nodeName}.AsSelector()
+	opts := kapi.ListOptions{
+		LabelSelector: labels.Everything(),
+		FieldSelector: fieldSelector,
+	}
+	podList, err := plugin.kClient.Pods(namespace).List(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, pod := range podList.Items {
+		if pod.ObjectMeta.Name == podName {
+			return &pod, nil
+		}
+	}
+	return nil, nil
+}
+
 func (plugin *OsdnNode) SetUpPod(namespace string, name string, id kubeletTypes.ContainerID) error {
 	err := plugin.WaitForPodNetworkReady()
 	if err != nil {
 		return err
 	}
 
-	pod, err := plugin.registry.GetPod(plugin.hostName, namespace, name)
+	pod, err := plugin.getPod(plugin.hostName, namespace, name)
 	if err != nil {
 		return err
 	}

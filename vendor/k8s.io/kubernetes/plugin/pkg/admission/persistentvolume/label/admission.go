@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -136,7 +136,7 @@ func (l *persistentVolumeLabel) getEBSVolumes() (aws.Volumes, error) {
 		if err != nil || cloudProvider == nil {
 			return nil, err
 		}
-		awsCloudProvider, ok := cloudProvider.(*aws.AWSCloud)
+		awsCloudProvider, ok := cloudProvider.(*aws.Cloud)
 		if !ok {
 			// GetCloudProvider has gone very wrong
 			return nil, fmt.Errorf("error retrieving AWS cloud provider")

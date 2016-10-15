@@ -55,7 +55,7 @@ We highly recommend trying out the [Origin walkthrough](https://github.com/opens
 
 ### Origin API
 
-The Origin API is located on each server at `https://<host>:8443/oapi/v1`. These APIs are described via [Swagger v1.2](https://www.swagger.io) at `https://<host>:8443/swaggerapi/oapi/v1`. For more, [see the API documentation](http://docs.openshift.org/latest/rest_api/openshift_v1.html).
+The Origin API is located on each server at `https://<host>:8443/oapi/v1`. These APIs are described via [Swagger v1.2](https://www.swagger.io) at `https://<host>:8443/swaggerapi/oapi/v1`. For more, [see the API documentation](https://docs.openshift.org/latest/rest_api/openshift_v1.html).
 
 ### Kubernetes
 
@@ -63,7 +63,7 @@ If you're looking for more information about using Kubernetes or the lower level
 
 * [Kubernetes Getting Started](https://github.com/kubernetes/kubernetes/blob/master/README.md)
 * [Kubernetes Documentation](https://github.com/kubernetes/kubernetes/blob/master/docs/README.md)
-* [Kubernetes API](http://docs.openshift.org/latest/rest_api/kubernetes_v1.html)
+* [Kubernetes API](https://docs.openshift.org/latest/rest_api/kubernetes_v1.html)
 
 ### Troubleshooting
 
@@ -111,9 +111,9 @@ FAQ
 
     Your application image can be easily extended with a database service with our [database images](https://docs.openshift.org/latest/using_images/db_images/overview.html):
 
-    * [MySQL](https://github.com/openshift/mysql)
-    * [MongoDB](https://github.com/openshift/mongodb)
-    * [PostgreSQL](https://github.com/openshift/postgresql)
+    * [MySQL](https://github.com/sclorg/mysql-container)
+    * [MongoDB](https://github.com/sclorg/mongodb-container)
+    * [PostgreSQL](https://github.com/sclorg/postgresql-container)
 
 4. Why doesn't my Docker image run on OpenShift?
 
@@ -140,7 +140,7 @@ FAQ
 
     The Origin and Kubernetes network model assigns each pod (group of containers) an IP that is expected to be reachable from all nodes in the cluster. The default setup is through a simple SDN plugin with OVS - this plugin expects the port 4679 to be open between nodes in the cluster. Also, the Origin master processes need to be able to reach pods via the network, so they may require the SDN plugin.
 
-    Other networking options are available such as Calico, Flannel, Nuage, and Weave. For a non-overlay networking solution, existing networks can be used by assigning a different subnet to each host, and ensuring routing rules deliver packets bound for that subnet to the host it belongs to. This is called [host subnet routing](https://docs.openshift.org/latest/admin_guide/native_container_routing.html).
+    Other networking options are available such as Calico, Flannel, Nuage, and Weave. For a non-overlay networking solution, existing networks can be used by assigning a different subnet to each host, and ensuring routing rules deliver packets bound for that subnet to the host it belongs to. This is called [host subnet routing](https://docs.openshift.org/latest/install_config/configuring_routing.html#install-config-configuring-native-container-routing).
 
 6. Why can't I run Origin in a Docker image on boot2docker or Ubuntu?
 
@@ -193,9 +193,9 @@ Garbage Collection | Alpha (1.3) | Not Yet Secure (1.3) | Garbage collection wil
 Pet Sets | Alpha (1.3) | Tech Preview (1.3) | Pet Sets are still being actively developed and no backwards compatibility is guaranteed. Also, Pet Sets allow users to create PVCs indirectly, and more security controls are needed to limit the potential impact on the cluster.
 Init Containers | Alpha (1.3) | Tech Preview (1.3) | Init containers are properly secured, but are not officially part of the Kubernetes API and may change without notice.
 Federated Clusters | Beta (1.3) | Tech Preview (1.3) | A Kubernetes federation server may be used against Origin clusters with the appropriate credentials today.<br>Known issues include tenant support in federation and the ability to have consistent access control between federation and normal clusters.<br>No Origin specific binary is being distributed for federation at this time.
-Deployment | Alpha (1.2)<br>Beta (1.3) | Disabled Pending Migration (1.2)<br>Tech Preview (1.3) | OpenShift launched with DeploymentConfigs, a more fully featured Deployment object. We plan to enable upstream Deployments with automatic migrations to Deployment Configs so that existing clusters continue to function as normal without a migration, and so that existing client tools automatically display Deployments.<br>Deployment Configs are a superset of Deployment features.
+Deployment | Alpha (1.2)<br>Beta (1.3) | Disabled Pending Migration (1.2)<br>Tech Preview (1.3) | OpenShift launched with DeploymentConfigs, a more fully featured Deployment object. The upstream Deployments are enabled in OpenShift as a tech preview so users can create both Deployments and DeploymentConfigs. We plan to provide migration from Deployment Config to Deployment in future when the feature parity with the upstream Deployment object is reached. <br>Deployment Configs are currently a superset of Deployment features.
 Replica Sets | Beta (1.2)<br>Beta (1.3) | Disabled Pending Migration (1.2)<br>Tech Preview (1.3) | Replica Sets perform the same function as Replication Controllers, but have a more powerful label syntax. We are working upstream to enable a migration path forward for clusters with existing Replication Controllers deployed to be automatically migratable to Replica Sets, in order to ease the transition for clients and tooling that depend on RCs.
-Ingress | Alpha (1.1)<br>Beta (1.2, 1.3) | Disabled Pending Migration (1.2, 1.3) | OpenShift launched with Routes, a more full featured Ingress object. We plan to enable upstream Ingresses with automatic migrations to Routes so that existing clusters continue to function as normal without a migration, and so that existing client tools automatically display Ingresses.<br>Upstream ingress controllers are not supported, since the integrated router is production supported with a superset of Ingress functionality.
+Ingress | Alpha (1.1)<br>Beta (1.2, 1.3) | Disabled Pending Migration (1.2)<br>Tech Preview (1.3) | OpenShift launched with Routes, a more full featured Ingress object. The upstream Ingress are enabled in OpenShift as a tech preview, so users can create both Ingress and Route resources. We plan to provide migration from Route to Ingress in future when the feature parity with the upstream Ingress is reached. <br>Routes are currently a superset of Ingress features.
 PodSecurityPolicy | Alpha (1.2)<br>Beta (1.3) | Disabled Pending Migration (1.3)<br>Not Yet Secure (1.3) | OpenShift launched with SecurityContextConstraints, and then upstreamed them as PodSecurityPolicy. We plan to enable upstream PodSecurityPolicy so as to automatically migrate existing SecurityContextConstraints. PodSecurityPolicy has not yet completed a full security review, which will be part of the criteria for tech preview. <br>SecurityContextConstraints are a superset of PodSecurityPolicy features.
 PodAntiAffinitySelectors | Alpha (1.3) | Not Yet Secure (1.3)<br>Tech Preview (1.4?) | End users are not allowed to set PodAntiAffinitySelectors that are not the node name due to the possibility of attacking the scheduler via denial of service.|
 NetworkPolicy | Beta (1.3) | Tech Preview (1.3) | OpenShift's default network plugins (`redhat/openshift-ovs-subnet` and `redhat/openshift-ovs-multitenant`) do not support NetworkPolicy yet, but if you use a third-party network plugin, it might.

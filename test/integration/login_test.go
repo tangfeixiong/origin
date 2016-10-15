@@ -8,11 +8,11 @@ import (
 
 	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
-	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
 
 	"github.com/openshift/origin/pkg/client"
 	newproject "github.com/openshift/origin/pkg/cmd/admin/project"
 	"github.com/openshift/origin/pkg/cmd/cli/cmd"
+	"github.com/openshift/origin/pkg/cmd/cli/cmd/login"
 	"github.com/openshift/origin/pkg/cmd/cli/config"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
 	"github.com/openshift/origin/pkg/user/api"
@@ -23,7 +23,6 @@ import (
 func TestLogin(t *testing.T) {
 	testutil.RequireEtcd(t)
 	defer testutil.DumpEtcdOnFailure(t)
-	clientcmd.DefaultCluster = clientcmdapi.Cluster{Server: ""}
 
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 
@@ -118,7 +117,7 @@ func TestLogin(t *testing.T) {
 
 }
 
-func newLoginOptions(server string, username string, password string, insecure bool) *cmd.LoginOptions {
+func newLoginOptions(server string, username string, password string, insecure bool) *login.LoginOptions {
 	flagset := pflag.NewFlagSet("test-flags", pflag.ContinueOnError)
 	flags := []string{}
 	clientConfig := defaultClientConfig(flagset)
@@ -126,7 +125,7 @@ func newLoginOptions(server string, username string, password string, insecure b
 
 	startingConfig, _ := clientConfig.RawConfig()
 
-	loginOptions := &cmd.LoginOptions{
+	loginOptions := &login.LoginOptions{
 		Server:             server,
 		StartingKubeConfig: &startingConfig,
 		Username:           username,

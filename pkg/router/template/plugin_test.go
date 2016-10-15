@@ -194,18 +194,15 @@ func (r *TestRouter) AddRoute(id string, weight int32, route *routeapi.Route, ho
 	return true
 }
 
-// RemoveRoute removes the service alias config for Route from the ServiceUnit
-func (r *TestRouter) RemoveRoute(id string, route *routeapi.Route) {
+// RemoveRoute removes the service alias config for Route
+func (r *TestRouter) RemoveRoute(route *routeapi.Route) {
 	r.Committed = false //expect any call to this method to subsequently call commit
 	routeKey := r.routeKey(route)
-	serviceAliasConfig, ok := r.State[routeKey]
+	_, ok := r.State[routeKey]
 	if !ok {
 		return
 	} else {
-		delete(serviceAliasConfig.ServiceUnitNames, id)
-		if len(serviceAliasConfig.ServiceUnitNames) == 0 {
-			delete(r.State, routeKey)
-		}
+		delete(r.State, routeKey)
 	}
 }
 
@@ -328,7 +325,7 @@ func TestHandleEndpoints(t *testing.T) {
 	}
 
 	router := newTestRouter(make(map[string]ServiceAliasConfig))
-	templatePlugin := newDefaultTemplatePlugin(router, true)
+	templatePlugin := newDefaultTemplatePlugin(router, true, nil)
 	// TODO: move tests that rely on unique hosts to pkg/router/controller and remove them from
 	// here
 	plugin := controller.NewUniqueHost(templatePlugin, controller.HostForRoute, controller.LogRejections)
@@ -442,7 +439,7 @@ func TestHandleTCPEndpoints(t *testing.T) {
 	}
 
 	router := newTestRouter(make(map[string]ServiceAliasConfig))
-	templatePlugin := newDefaultTemplatePlugin(router, false)
+	templatePlugin := newDefaultTemplatePlugin(router, false, nil)
 	// TODO: move tests that rely on unique hosts to pkg/router/controller and remove them from
 	// here
 	plugin := controller.NewUniqueHost(templatePlugin, controller.HostForRoute, controller.LogRejections)
@@ -488,7 +485,7 @@ func (r *fakeRejections) RecordRouteRejection(route *routeapi.Route, reason, mes
 func TestHandleRoute(t *testing.T) {
 	rejections := &fakeRejections{}
 	router := newTestRouter(make(map[string]ServiceAliasConfig))
-	templatePlugin := newDefaultTemplatePlugin(router, true)
+	templatePlugin := newDefaultTemplatePlugin(router, true, nil)
 	// TODO: move tests that rely on unique hosts to pkg/router/controller and remove them from
 	// here
 	plugin := controller.NewUniqueHost(templatePlugin, controller.HostForRoute, rejections)
@@ -666,7 +663,7 @@ func TestHandleRoute(t *testing.T) {
 func TestHandleRouteExtendedValidation(t *testing.T) {
 	rejections := &fakeRejections{}
 	router := newTestRouter(make(map[string]ServiceAliasConfig))
-	templatePlugin := newDefaultTemplatePlugin(router, true)
+	templatePlugin := newDefaultTemplatePlugin(router, true, nil)
 	// TODO: move tests that rely on unique hosts to pkg/router/controller and remove them from
 	// here
 	extendedValidatorPlugin := controller.NewExtendedValidator(templatePlugin, rejections)
@@ -1019,7 +1016,7 @@ func TestHandleRouteExtendedValidation(t *testing.T) {
 
 func TestNamespaceScopingFromEmpty(t *testing.T) {
 	router := newTestRouter(make(map[string]ServiceAliasConfig))
-	templatePlugin := newDefaultTemplatePlugin(router, true)
+	templatePlugin := newDefaultTemplatePlugin(router, true, nil)
 	// TODO: move tests that rely on unique hosts to pkg/router/controller and remove them from
 	// here
 	plugin := controller.NewUniqueHost(templatePlugin, controller.HostForRoute, controller.LogRejections)
@@ -1080,7 +1077,7 @@ func TestNamespaceScopingFromEmpty(t *testing.T) {
 
 func TestUnchangingEndpointsDoesNotCommit(t *testing.T) {
 	router := newTestRouter(make(map[string]ServiceAliasConfig))
-	plugin := newDefaultTemplatePlugin(router, true)
+	plugin := newDefaultTemplatePlugin(router, true, nil)
 	endpoints := &kapi.Endpoints{
 		ObjectMeta: kapi.ObjectMeta{
 			Namespace: "foo",

@@ -3,8 +3,8 @@ package generictrigger
 import (
 	"time"
 
-	kapi "k8s.io/kubernetes/pkg/api"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"github.com/golang/glog"
+
 	kcontroller "k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -12,7 +12,6 @@ import (
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 
-	"github.com/golang/glog"
 	osclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	imageapi "github.com/openshift/origin/pkg/image/api"
@@ -22,17 +21,16 @@ const (
 	// We must avoid creating processing deployment configs until the deployment config and image
 	// stream stores have synced. If it hasn't synced, to avoid a hot loop, we'll wait this long
 	// between checks.
-	StoreSyncedPollPeriod = 100 * time.Millisecond
+	storeSyncedPollPeriod = 100 * time.Millisecond
 	// MaxRetries is the number of times a deployment config will be retried before it is dropped
 	// out of the queue.
 	MaxRetries = 5
 )
 
 // NewDeploymentTriggerController returns a new DeploymentTriggerController.
-func NewDeploymentTriggerController(dcInformer, streamInformer framework.SharedIndexInformer, oc osclient.Interface, kc kclient.Interface, codec runtime.Codec) *DeploymentTriggerController {
+func NewDeploymentTriggerController(dcInformer, streamInformer framework.SharedIndexInformer, oc osclient.Interface, codec runtime.Codec) *DeploymentTriggerController {
 	c := &DeploymentTriggerController{
 		dn: oc,
-		rn: kc,
 
 		queue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 
@@ -81,7 +79,7 @@ func (c *DeploymentTriggerController) waitForSyncedStore(ready chan<- struct{}, 
 	for !c.dcStoreSynced() {
 		glog.V(4).Infof("Waiting for the deployment config cache to sync before starting the trigger controller workers")
 		select {
-		case <-time.After(StoreSyncedPollPeriod):
+		case <-time.After(storeSyncedPollPeriod):
 		case <-stopCh:
 			return
 		}
@@ -91,12 +89,25 @@ func (c *DeploymentTriggerController) waitForSyncedStore(ready chan<- struct{}, 
 
 func (c *DeploymentTriggerController) addDeploymentConfig(obj interface{}) {
 	dc := obj.(*deployapi.DeploymentConfig)
+	if len(dc.Spec.Triggers) == 0 || dc.Spec.Paused {
+		return
+	}
 	c.enqueueDeploymentConfig(dc)
 }
 
 func (c *DeploymentTriggerController) updateDeploymentConfig(old, cur interface{}) {
-	dc := cur.(*deployapi.DeploymentConfig)
-	c.enqueueDeploymentConfig(dc)
+	// A periodic relist will send update events for all known configs.
+	newDc := cur.(*deployapi.DeploymentConfig)
+	oldDc := old.(*deployapi.DeploymentConfig)
+	if newDc.ResourceVersion == oldDc.ResourceVersion {
+		return
+	}
+
+	if len(newDc.Spec.Triggers) == 0 || newDc.Spec.Paused {
+		return
+	}
+
+	c.enqueueDeploymentConfig(newDc)
 }
 
 // addImageStream enqueues the deployment configs that point to the new image stream.
@@ -115,13 +126,14 @@ func (c *DeploymentTriggerController) addImageStream(obj interface{}) {
 // updateImageStream enqueues the deployment configs that point to the updated image stream.
 func (c *DeploymentTriggerController) updateImageStream(old, cur interface{}) {
 	// A periodic relist will send update events for all known streams.
-	if kapi.Semantic.DeepEqual(old, cur) {
+	newStream := cur.(*imageapi.ImageStream)
+	oldStream := old.(*imageapi.ImageStream)
+	if newStream.ResourceVersion == oldStream.ResourceVersion {
 		return
 	}
 
-	stream := cur.(*imageapi.ImageStream)
-	glog.V(4).Infof("Image stream %q updated.", stream.Name)
-	dcList, err := c.dcStore.GetConfigsForImageStream(stream)
+	glog.V(4).Infof("Image stream %q updated.", newStream.Name)
+	dcList, err := c.dcStore.GetConfigsForImageStream(newStream)
 	if err != nil {
 		return
 	}

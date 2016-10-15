@@ -42,6 +42,7 @@ func TestHandleScenarios(t *testing.T) {
 		if d.test {
 			config = deploytest.TestDeploymentConfig(config)
 		}
+		config.Namespace = "test"
 		deployment, _ := deployutil.MakeDeployment(config, kapi.Codecs.LegacyCodec(deployv1.SchemeGroupVersion))
 		deployment.Annotations[deployapi.DeploymentStatusAnnotation] = string(d.status)
 		if d.cancelled {
@@ -623,6 +624,7 @@ func TestHandleScenarios(t *testing.T) {
 	for _, test := range tests {
 		t.Logf("evaluating test: %s", test.name)
 
+		var updatedConfig *deployapi.DeploymentConfig
 		deployments := map[string]kapi.ReplicationController{}
 		toStore := []kapi.ReplicationController{}
 		for _, template := range test.before {
@@ -632,6 +634,11 @@ func TestHandleScenarios(t *testing.T) {
 		}
 
 		oc := &testclient.Fake{}
+		oc.AddReactor("update", "deploymentconfigs", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+			dc := action.(ktestclient.UpdateAction).GetObject().(*deployapi.DeploymentConfig)
+			updatedConfig = dc
+			return true, dc, nil
+		})
 		kc := &ktestclient.Fake{}
 		kc.AddReactor("create", "replicationcontrollers", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
 			rc := action.(ktestclient.CreateAction).GetObject().(*kapi.ReplicationController)
@@ -695,6 +702,7 @@ func TestHandleScenarios(t *testing.T) {
 			config = deploytest.TestDeploymentConfig(config)
 		}
 		config.Spec.Replicas = test.replicas
+		config.Namespace = "test"
 
 		if err := c.Handle(config); err != nil && !test.errExpected {
 			t.Errorf("unexpected error: %s", err)
@@ -711,6 +719,10 @@ func TestHandleScenarios(t *testing.T) {
 		}
 		sort.Sort(deployutil.ByLatestVersionDesc(expectedDeployments))
 		sort.Sort(deployutil.ByLatestVersionDesc(actualDeployments))
+
+		if updatedConfig != nil {
+			config = updatedConfig
+		}
 
 		if e, a := test.expectedReplicas, config.Spec.Replicas; e != a {
 			t.Errorf("expected config replicas to be %d, got %d", e, a)

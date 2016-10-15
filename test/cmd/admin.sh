@@ -1,12 +1,5 @@
 #!/bin/bash
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/lib/init.sh"
-os::log::stacktrace::install
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 trap os::test::junit::reconcile_output EXIT
 
 # Cleanup cluster resources created by this test
@@ -15,6 +8,7 @@ trap os::test::junit::reconcile_output EXIT
   oc delete project/example project/ui-test-project project/recreated-project
   oc delete sa/router -n default
   oc delete node/fake-node
+  oc delete groups/shortoutputgroup
   oc delete groups/group1
   oc delete groups/cascaded-group
   oc delete groups/orphaned-group
@@ -26,6 +20,7 @@ trap os::test::junit::reconcile_output EXIT
   oadm policy reconcile-cluster-role-bindings --confirm --additive-only=false
 ) &>/dev/null
 
+project="$( oc project -q )"
 
 defaultimage="openshift/origin-\${component}:latest"
 USE_IMAGES=${USE_IMAGES:-$defaultimage}
@@ -77,7 +72,10 @@ status:
 ' | oc create -f -"
 
 os::cmd::expect_success_and_text 'oadm manage-node --selector= --schedulable=true' 'Ready'
-os::cmd::expect_success_and_not_text 'oadm manage-node --selector= --schedulable=true' 'Sched'
+os::cmd::expect_success_and_not_text 'oadm manage-node --selector= --schedulable=true' 'SchedulingDisabled'
+os::cmd::expect_success_and_not_text 'oc get node -o yaml' 'unschedulable: true'
+os::cmd::expect_success_and_text 'oadm manage-node --selector= --schedulable=false' 'SchedulingDisabled'
+os::cmd::expect_success_and_text 'oc get node -o yaml' 'unschedulable: true'
 echo "manage-node: ok"
 os::test::junit::declare_suite_end
 
@@ -113,7 +111,11 @@ echo "certs: ok"
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_start "cmd/admin/groups"
-os::cmd::expect_success 'oadm groups new group1 foo bar'
+os::cmd::expect_success_and_text 'oadm groups new shortoutputgroup -o name' 'group/shortoutputgroup'
+os::cmd::expect_failure_and_text 'oadm groups new shortoutputgroup' 'Error from server: groups "shortoutputgroup" already exists'
+os::cmd::expect_failure_and_text 'oadm groups new errorgroup -o blah' 'error: output format "blah" not recognized'
+os::cmd::expect_failure_and_text 'oc get groups/errorgroup' 'groups "errorgroup" not found'
+os::cmd::expect_success_and_text 'oadm groups new group1 foo bar' 'group1.*foo, bar'
 os::cmd::expect_success_and_text 'oc get groups/group1 --no-headers' 'foo, bar'
 os::cmd::expect_success 'oadm groups add-users group1 baz'
 os::cmd::expect_success_and_text 'oc get groups/group1 --no-headers' 'baz'
@@ -248,7 +250,7 @@ echo "admin-reconcile-cluster-role-bindings: ok"
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_start "cmd/admin/role-reapers"
-os::cmd::expect_success "oc create -f test/extended/testdata/roles/policy-roles.yaml"
+os::cmd::expect_success "oc process -f test/extended/testdata/roles/policy-roles.yaml -v NAMESPACE='${project}' | oc create -f -"
 os::cmd::expect_success "oc get rolebinding/basic-users"
 os::cmd::expect_success "oc delete role/basic-user"
 os::cmd::expect_failure "oc get rolebinding/basic-users"
@@ -344,6 +346,8 @@ echo "ex build-chain: ok"
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_start "cmd/admin/complex-scenarios"
+# Make sure no one commits data with allocated values that could flake
+os::cmd::expect_failure 'grep -r "clusterIP.*172" test/testdata/app-scenarios'
 os::cmd::expect_success 'oadm new-project example --admin="createuser"'
 os::cmd::expect_success 'oc project example'
 os::cmd::try_until_success 'oc get serviceaccount default'
@@ -391,18 +395,18 @@ os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_start "cmd/admin/policybinding-required"
 # Admin can't bind local roles without cluster-admin permissions
-os::cmd::expect_success "oc create -f test/extended/testdata/roles/empty-role.yaml -n cmd-admin"
-os::cmd::expect_success "oc delete policybinding/cmd-admin:default -n cmd-admin"
-os::cmd::expect_success 'oadm policy add-role-to-user admin local-admin  -n cmd-admin'
-os::cmd::try_until_text "oc policy who-can get policybindings -n cmd-admin" "local-admin"
+os::cmd::expect_success "oc create -f test/extended/testdata/roles/empty-role.yaml -n '${project}'"
+os::cmd::expect_success "oc delete 'policybinding/${project}:default' -n '${project}'"
+os::cmd::expect_success 'oadm policy add-role-to-user admin local-admin  -n '${project}''
+os::cmd::try_until_text "oc policy who-can get policybindings -n '${project}'" "local-admin"
 os::cmd::expect_success 'oc login -u local-admin -p pw'
-os::cmd::expect_failure 'oc policy add-role-to-user empty-role other --role-namespace=cmd-admin'
+os::cmd::expect_failure 'oc policy add-role-to-user empty-role other --role-namespace='${project}''
 os::cmd::expect_success 'oc login -u system:admin'
-os::cmd::expect_success "oc create policybinding cmd-admin -n cmd-admin"
+os::cmd::expect_success "oc create policybinding '${project}' -n '${project}'"
 os::cmd::expect_success 'oc login -u local-admin -p pw'
-os::cmd::expect_success 'oc policy add-role-to-user empty-role other --role-namespace=cmd-admin -n cmd-admin'
+os::cmd::expect_success 'oc policy add-role-to-user empty-role other --role-namespace='${project}' -n '${project}''
 os::cmd::expect_success 'oc login -u system:admin'
-os::cmd::expect_success "oc delete role/empty-role -n cmd-admin"
+os::cmd::expect_success "oc delete role/empty-role -n '${project}'"
 echo "policybinding-required: ok"
 os::test::junit::declare_suite_end
 
@@ -412,8 +416,8 @@ os::test::junit::declare_suite_start "cmd/admin/user-group-cascade"
 os::cmd::expect_success 'oc login -u cascaded-user -p pw'
 os::cmd::expect_success 'oc login -u orphaned-user -p pw'
 os::cmd::expect_success 'oc login -u system:admin'
-os::cmd::expect_success 'oadm groups new cascaded-group cascaded-user orphaned-user'
-os::cmd::expect_success 'oadm groups new orphaned-group cascaded-user orphaned-user'
+os::cmd::expect_success_and_text 'oadm groups new cascaded-group cascaded-user orphaned-user' 'cascaded-group.*cascaded-user, orphaned-user'
+os::cmd::expect_success_and_text 'oadm groups new orphaned-group cascaded-user orphaned-user' 'orphaned-group.*cascaded-user, orphaned-user'
 # Add roles, sccs to users/groups
 os::cmd::expect_success 'oadm policy add-scc-to-user           restricted    cascaded-user  orphaned-user'
 os::cmd::expect_success 'oadm policy add-scc-to-group          restricted    cascaded-group orphaned-group'
@@ -479,6 +483,22 @@ os::cmd::expect_success 'oc create identity            test-idp:test-uid'
 os::cmd::expect_success 'oc create useridentitymapping test-idp:test-uid test-cmd-user'
 os::cmd::expect_success_and_text 'oc describe identity test-idp:test-uid' 'test-cmd-user'
 os::cmd::expect_success_and_text 'oc describe user     test-cmd-user' 'test-idp:test-uid'
+os::test::junit::declare_suite_end
+
+# images
+os::test::junit::declare_suite_start "cmd/admin/images"
+
+# import image and check its information
+os::cmd::expect_success "oc create -f ${OS_ROOT}/test/testdata/stable-busybox.yaml"
+os::cmd::expect_success_and_text "oadm top images" "sha256:a59906e33509d14c036c8678d687bd4eec81ed7c4b8ce907b888c607f6a1e0e6\W+default/busybox \(latest\)\W+<none>\W+<none>\W+yes\W+0\.65MiB"
+os::cmd::expect_success_and_text "oadm top imagestreams" "default/busybox\W+0.65MiB\W+1\W+1"
+
+# log in as an image-pruner and test that oadm prune images works against the atomic binary
+os::cmd::expect_success "oadm policy add-cluster-role-to-user system:image-pruner pruner --config='${MASTER_CONFIG_DIR}/admin.kubeconfig'"
+os::cmd::expect_success "oc login --server=${KUBERNETES_MASTER} --certificate-authority='${MASTER_CONFIG_DIR}/ca.crt' -u pruner -p anything"
+os::cmd::expect_success_and_text "oadm prune images" "Dry run enabled - no modifications will be made. Add --confirm to remove images"
+
+echo "images: ok"
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_end

@@ -9,6 +9,7 @@ import (
 	"github.com/openshift/origin/pkg/client"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/controller/shared"
+	imageapi "github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/project/cache"
 	"github.com/openshift/origin/pkg/quota/controller/clusterquotamapping"
 )
@@ -22,6 +23,7 @@ type PluginInitializer struct {
 	RESTClientConfig      restclient.Config
 	Informers             shared.InformerFactory
 	ClusterQuotaMapper    clusterquotamapping.ClusterQuotaMapper
+	DefaultRegistryFn     imageapi.DefaultRegistryFunc
 }
 
 // Initialize will check the initialization interfaces implemented by each plugin
@@ -49,8 +51,14 @@ func (i *PluginInitializer) Initialize(plugins []admission.Interface) {
 		if wantsInformers, ok := plugin.(WantsInformers); ok {
 			wantsInformers.SetInformers(i.Informers)
 		}
+		if wantsInformerFactory, ok := plugin.(admission.WantsInformerFactory); ok {
+			wantsInformerFactory.SetInformerFactory(i.Informers.KubernetesInformers())
+		}
 		if wantsClusterQuotaMapper, ok := plugin.(WantsClusterQuotaMapper); ok {
 			wantsClusterQuotaMapper.SetClusterQuotaMapper(i.ClusterQuotaMapper)
+		}
+		if wantsDefaultRegistryFunc, ok := plugin.(WantsDefaultRegistryFunc); ok {
+			wantsDefaultRegistryFunc.SetDefaultRegistryFunc(i.DefaultRegistryFn)
 		}
 	}
 }

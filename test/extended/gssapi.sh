@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
 #
 # Extended tests for logging in using GSSAPI
-
-set -o errexit
-set -o nounset
-set -o pipefail
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 
 starttime="$(date +%s)"
 
 project_name='gssapiproxy'
 test_name="test-extended/${project_name}"
-
-OS_ROOT="$(dirname "${BASH_SOURCE}")/../.."
-cd "${OS_ROOT}"
-source hack/lib/init.sh
 
 os::build::setup_env
 
@@ -21,7 +14,6 @@ os::util::environment::setup_time_vars
 os::util::environment::setup_all_server_vars "${test_name}"
 os::util::environment::use_sudo
 
-os::log::stacktrace::install
 os::log::start_system_logger
 
 ensure_iptables_or_die
@@ -40,7 +32,6 @@ junit_gssapi_output="${LOG_DIR}/raw_test_output_gssapi.log"
 
 os::test::junit::declare_suite_start "${test_name}"
 
-os::cmd::expect_success 'hack/build-go.sh cmd/oc -tags=gssapi'
 os::cmd::expect_success_and_text 'oc version' 'GSSAPI Kerberos SPNEGO'
 
 function cleanup() {
@@ -81,16 +72,6 @@ function cleanup() {
 }
 trap "cleanup" EXIT
 
-function update_auth_proxy_config() {
-    local server_config="${1}"
-    local spec='{.items[0].spec.containers[0].env[?(@.name=="SERVER")].value}'
-    spec+='_'
-    spec+='{.items[0].status.conditions[?(@.type=="Ready")].status}'
-
-    os::cmd::expect_success "oc set env dc/gssapiproxy-server SERVER='${server_config}'"
-    os::cmd::try_until_text "oc get pods -l deploymentconfig=gssapiproxy-server -o jsonpath='${spec}'" "^${server_config}_True$"
-}
-
 configure_os_server
 
 # set up env vars
@@ -106,7 +87,7 @@ cp "${SERVER_CONFIG_DIR}/master/master-config.yaml" "${SERVER_CONFIG_DIR}/master
 openshift ex config patch "${SERVER_CONFIG_DIR}/master/master-config.tmp.yaml" --patch="${oauth_patch}" > "${SERVER_CONFIG_DIR}/master/master-config.yaml"
 start_os_server
 
-KUBECONFIG="${ADMIN_KUBECONFIG}"
+export KUBECONFIG="${ADMIN_KUBECONFIG}"
 
 install_registry
 wait_for_registry
@@ -126,27 +107,38 @@ os_images=(fedora ubuntu)
 
 for os_image in "${os_images[@]}"; do
 
-    cp "$(which oc)" "${test_data_location}/${os_image}/base"
-    cp -R "${OS_ROOT}/hack" "${test_data_location}/${os_image}/base"
-    cp "${test_data_location}/scripts/test-wrapper.sh" "${test_data_location}/${os_image}/base"
-    cp "${test_data_location}/scripts/gssapi-tests.sh" "${test_data_location}/${os_image}/base"
-    cp "${test_data_location}/config/kubeconfig" "${test_data_location}/${os_image}/base"
-
     pushd "${test_data_location}/${os_image}" > /dev/null
+
         pushd base > /dev/null
-            docker build --build-arg REALM="${realm}" --build-arg HOST="${host}" -t "${project_name}/${os_image}-gssapi-base:latest" .
+            os::cmd::expect_success "cp '$(which oc)' ."
+            os::cmd::expect_success "cp -R '${OS_ROOT}/hack' ."
+            os::cmd::expect_success 'cp ../../scripts/test-wrapper.sh .'
+            os::cmd::expect_success 'cp ../../scripts/gssapi-tests.sh .'
+            os::cmd::expect_success 'cp ../../config/kubeconfig .'
+            os::cmd::expect_success "docker build --build-arg REALM='${realm}' --build-arg HOST='${host}' -t '${project_name}/${os_image}-gssapi-base:latest' ."
         popd > /dev/null
 
         pushd kerberos > /dev/null
-            docker build -t "${project_name}/${os_image}-gssapi-kerberos:latest" .
+            os::cmd::expect_success "docker build -t '${project_name}/${os_image}-gssapi-kerberos:latest' ."
         popd > /dev/null
 
         pushd kerberos_configured > /dev/null
-            docker build -t "${project_name}/${os_image}-gssapi-kerberos-configured:latest" .
+            os::cmd::expect_success "docker build -t '${project_name}/${os_image}-gssapi-kerberos-configured:latest' ."
         popd > /dev/null
+
     popd > /dev/null
 
 done
+
+function update_auth_proxy_config() {
+    local server_config="${1}"
+    local spec='{.items[0].spec.containers[0].env[?(@.name=="SERVER")].value}'
+    spec+='_'
+    spec+='{.items[0].status.conditions[?(@.type=="Ready")].status}'
+
+    os::cmd::expect_success "oc set env dc/gssapiproxy-server SERVER='${server_config}'"
+    os::cmd::try_until_text "oc get pods -l deploymentconfig=gssapiproxy-server -o jsonpath='${spec}'" "^${server_config}_True$"
+}
 
 function run_gssapi_tests() {
     local image_name="${1}"
